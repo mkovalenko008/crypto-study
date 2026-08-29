@@ -412,6 +412,11 @@ table.journal-table td.wrap { white-space: normal; min-width: 160px; }
 .resource-group h4 { text-transform: uppercase; font-size: var(--text-caption); letter-spacing: 0.18em; color: var(--color-slate-mist); font-weight: 500; border-bottom: 1px solid var(--border-hair-soft); padding-bottom: 8px; }
 .resource-group ul { list-style: none; margin: 10px 0 28px; padding: 0; }
 .resource-group li { padding: 8px 0; border-bottom: 1px solid var(--border-hair-soft); color: var(--color-cloud-gray); }
+.resource-group a { color: var(--color-frost-white); }
+.resource-group a:hover { color: var(--color-ember-glow); }
+
+.link-chips { display: flex; flex-wrap: wrap; gap: 10px; }
+.link-chips .btn { text-decoration: none; }
 
 /* ===== Achievements ===== */
 .badge-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 16px; }

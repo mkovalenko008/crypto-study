@@ -415,6 +415,15 @@ function renderBlockScreen(id) {
 
   const checkLine = b.check ? `<div class="scenario-prompt"><strong>Чек на выходе:</strong> ${esc(b.check)}</div>` : "";
 
+  const linksCard = (b.links && b.links.length) ? `
+    <div class="card">
+      <span class="eyebrow">Материалы</span>
+      <h3>Куда идти читать/пробовать</h3>
+      <div class="link-chips">
+        ${b.links.map(l => `<a class="btn" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">${esc(l.label)} ↗</a>`).join("")}
+      </div>
+    </div>` : "";
+
   return `
     <a href="#/dashboard" class="faint">&larr; К дашборду</a>
     <div class="card">
@@ -426,6 +435,7 @@ function renderBlockScreen(id) {
       ${sections}
       ${checkLine}
     </div>
+    ${linksCard}
 
     <div class="card">
       <span class="eyebrow">Практика · ${Math.round(checklistFrac * 100)}%</span>
@@ -891,7 +901,7 @@ function renderResourcesScreen() {
   const groups = PROGRAM_META.resources.map(g => `
     <div class="resource-group">
       <h4>${esc(g.category)}</h4>
-      <ul>${g.items.map(i => `<li>${esc(i)}</li>`).join("")}</ul>
+      <ul>${g.items.map(i => `<li><a href="${esc(i.url)}" target="_blank" rel="noopener noreferrer">${esc(i.name)} ↗</a>${i.note ? ` — ${esc(i.note)}` : ""}</li>`).join("")}</ul>
     </div>`).join("");
   return `<div class="card"><span class="eyebrow">Справочник</span><h2>Панель ресурсов</h2>${groups}</div>`;
 }

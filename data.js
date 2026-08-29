@@ -31,35 +31,59 @@ const PROGRAM_META = {
   resources: [
     {
       category: "Данные",
-      items: ["DeFiLlama", "Dune Analytics", "Etherscan/Solscan", "DeBank", "Token Unlocks", "Nansen (smart money tracking)"]
+      items: [
+        { name: "DeFiLlama", url: "https://defillama.com/" },
+        { name: "Dune Analytics", url: "https://dune.com/" },
+        { name: "Etherscan", url: "https://etherscan.io/" },
+        { name: "Solscan", url: "https://solscan.io/" },
+        { name: "DeBank", url: "https://debank.com/" },
+        { name: "Token Unlocks", url: "https://defillama.com/unlocks" },
+        { name: "Nansen (smart money tracking)", url: "https://www.nansen.ai/" }
+      ]
     },
     {
       category: "Проверка на скам",
-      items: ["RugCheck", "TokenSniffer", "revoke.cash"]
+      items: [
+        { name: "RugCheck", url: "https://rugcheck.xyz/" },
+        { name: "TokenSniffer", url: "https://tokensniffer.com/" },
+        { name: "revoke.cash", url: "https://revoke.cash/" }
+      ]
     },
     {
       category: "Аналитика без продажи курсов",
-      items: ["Messari", "Delphi Digital", "Bankless"]
+      items: [
+        { name: "Messari", url: "https://messari.io/" },
+        { name: "Delphi Digital", url: "https://delphidigital.io/" },
+        { name: "Bankless", url: "https://www.bankless.com/" }
+      ]
     },
     {
       category: "Без коммерческого интереса (регулятор США)",
       items: [
-        "SEC Investor.gov (investor alerts по крипте)",
-        "FINRA Crypto and Blockchain Education Program (finra.org/cryptoed) — единственные источники, которым не нужно, чтобы ты торговал больше или платил за курс"
+        { name: "SEC Investor.gov (investor alerts по крипте)", url: "https://www.investor.gov/" },
+        { name: "FINRA Crypto and Blockchain Education Program", url: "https://www.finra.org/cryptoed", note: "единственные источники, которым не нужно, чтобы ты торговал больше или платил за курс" }
       ]
     },
     {
       category: "Количественный анализ / бэктестинг",
-      items: ["Backtrader", "VectorBT", "QuantConnect (Lean)"]
+      items: [
+        { name: "Backtrader", url: "https://www.backtrader.com/" },
+        { name: "VectorBT", url: "https://vectorbt.dev/" },
+        { name: "QuantConnect (Lean)", url: "https://www.quantconnect.com/" }
+      ]
     },
     {
       category: "База",
-      items: ["Coursera — Princeton Bitcoin course", "документация конкретных сетей (ethereum.org/developers, docs у Solana/Arbitrum и т.д.)"]
+      items: [
+        { name: "Coursera — Princeton Bitcoin course", url: "https://www.coursera.org/learn/cryptocurrency" },
+        { name: "ethereum.org/developers", url: "https://ethereum.org/developers", note: "плюс документация конкретных сетей — docs у Solana/Arbitrum и т.д." }
+      ]
     },
     {
       category: "Бонус-практика",
       items: [
-        "Coinbase Learn / Binance Academy — $1-10 в реальной крипте за пройденный квиз по теме; помни: биржа получает оплату от эмитента за показ квиза, это реклама, а не нейтральная подборка — польза в самой практике, не в списке токенов"
+        { name: "Coinbase Learn", url: "https://www.coinbase.com/learn" },
+        { name: "Binance Academy", url: "https://academy.binance.com/en", note: "$1-10 в реальной крипте за пройденный квиз по теме; помни: биржа получает оплату от эмитента за показ квиза, это реклама, а не нейтральная подборка — польза в самой практике, не в списке токенов" }
       ]
     }
   ]
@@ -84,6 +108,10 @@ const BLOCKS = [
     ],
     practice_items: [],
     check: "можешь нарисовать на бумаге, как транзакция попадает в блок, от подписи до финализации, включая роль mempool и валидатора/майнера.",
+    links: [
+      { label: "Bitcoin Whitepaper (PDF, англ.)", url: "https://bitcoin.org/bitcoin.pdf" },
+      { label: "Coursera — Bitcoin and Cryptocurrency Technologies (Princeton)", url: "https://www.coursera.org/learn/cryptocurrency" }
+    ],
     quiz: [
       {
         question: "В чём принципиальная разница между UTXO-моделью (Bitcoin) и account-моделью (Ethereum)?",
@@ -178,6 +206,12 @@ const BLOCKS = [
       "Настроить revoke.cash, посмотреть свои текущие allowances (если уже есть кошелёк)."
     ],
     check: "знаешь наизусть 5 векторов атак выше и что делаешь против каждого конкретно, без «буду осторожен».",
+    links: [
+      { label: "MetaMask", url: "https://metamask.io/" },
+      { label: "Sepolia faucet (Google Cloud Web3)", url: "https://cloud.google.com/application/web3/faucet/ethereum/sepolia" },
+      { label: "Etherscan", url: "https://etherscan.io/" },
+      { label: "revoke.cash", url: "https://revoke.cash/" }
+    ],
     quiz: [
       {
         question: "Что означает принцип «not your keys, not your coins»?",
@@ -290,6 +324,20 @@ const BLOCKS = [
       "Прогнать через полный чек-лист 3 проекта разного уровня риска, зафиксировать результат в таблице по каждому критерию — не в голове, а письменно."
     ],
     check: "можешь по критериям выше дать оценку любому новому токену за 15-20 минут, не выходя за рамки открытых источников.",
+    links: [
+      { label: "DeFiLlama", url: "https://defillama.com/" },
+      { label: "Dune Analytics", url: "https://dune.com/" },
+      { label: "Token Unlocks", url: "https://defillama.com/unlocks" },
+      { label: "CertiK", url: "https://www.certik.com/" },
+      { label: "Trail of Bits", url: "https://www.trailofbits.com/" },
+      { label: "OpenZeppelin", url: "https://www.openzeppelin.com/" },
+      { label: "Immunefi", url: "https://immunefi.com/" },
+      { label: "RugCheck", url: "https://rugcheck.xyz/" },
+      { label: "TokenSniffer", url: "https://tokensniffer.com/" },
+      { label: "Unicrypt / UNCX Network", url: "https://uncx.network/" },
+      { label: "Team.Finance", url: "https://www.team.finance/" },
+      { label: "Nansen", url: "https://www.nansen.ai/" }
+    ],
     quiz: [
       {
         question: "Что означает большой разрыв между FDV (fully diluted valuation) и market cap?",
@@ -394,6 +442,7 @@ const BLOCKS = [
       "Разобрать паттерны и посчитать expectancy по факту."
     ],
     check: null,
+    links: [],
     quiz: [
       {
         question: "Какая формула expectancy по Van Tharp дана в блоке?",
@@ -495,6 +544,12 @@ const BLOCKS = [
       "Посчитать реальную годовую доходность за вычетом комиссий сети на вход/выход."
     ],
     check: null,
+    links: [
+      { label: "Aave", url: "https://aave.com/" },
+      { label: "Compound", url: "https://compound.finance/" },
+      { label: "Lido (stETH)", url: "https://lido.fi/" },
+      { label: "Jito (jitoSOL)", url: "https://www.jito.network/staking/" }
+    ],
     quiz: [
       {
         question: "Какая формула impermanent loss дана для пула 50/50 при изменении цены в K раз?",
@@ -572,6 +627,7 @@ const BLOCKS = [
       "Сделать то же самое для Ronin Bridge / Wormhole (2022)."
     ],
     check: null,
+    links: [],
     quiz: [
       {
         question: "Какую доходность обещал Anchor Protocol на UST — доходность, ставшую задним числом первым сигналом риска?",
@@ -677,6 +733,12 @@ const BLOCKS = [
       "Если тестируешь бота — прогони его через полный цикл walk-forward, а не только на одном отрезке истории, прежде чем доверять результату."
     ],
     check: null,
+    links: [
+      { label: "TradingView", url: "https://www.tradingview.com/" },
+      { label: "Backtrader", url: "https://www.backtrader.com/" },
+      { label: "VectorBT", url: "https://vectorbt.dev/" },
+      { label: "QuantConnect / Lean", url: "https://www.quantconnect.com/" }
+    ],
     quiz: [
       {
         question: "Какой ориентир риска на сделку даёт формула position sizing в блоке?",
@@ -756,6 +818,9 @@ const BLOCKS = [
       "Провести ежемесячную ревизию: отклонение от целевых долей, новые риски у активов."
     ],
     check: null,
+    links: [
+      { label: "DeBank", url: "https://debank.com/" }
+    ],
     quiz: [
       {
         question: "Что в первую очередь должно определять долю BTC/ETH против альтов согласно блоку?",
@@ -816,6 +881,11 @@ const BLOCKS = [
     ],
     practice_items: [],
     check: null,
+    links: [
+      { label: "Arbitrum", url: "https://arbitrum.io/" },
+      { label: "Optimism", url: "https://optimism.io/" },
+      { label: "zkSync", url: "https://www.zksync.io/" }
+    ],
     quiz: [
       {
         question: "Какие сети приведены в блоке как исторический пример airdrop-фарминга через тестнеты?",
@@ -872,6 +942,7 @@ const BLOCKS = [
     ],
     practice_items: [],
     check: null,
+    links: [],
     quiz: [
       {
         question: "Какая ставка НДФЛ с продажи криптовалюты указана в блоке и когда применяется повышенная ставка?",
@@ -932,6 +1003,9 @@ const BLOCKS = [
     ],
     practice_items: [],
     check: null,
+    links: [
+      { label: "Flashbots Protect", url: "https://docs.flashbots.net/flashbots-protect/overview" }
+    ],
     quiz: [
       {
         question: "Почему мемкоины называют «чисто рефлексивным активом»?",
