@@ -17,8 +17,7 @@ const Store = (() => {
       scenarios: {},      // id -> { done, userAnswer }
       standing: {},        // idx -> bool
       journal: { entries: [], propFirm: null },
-      achievements: [],   // unlocked ids
-      theme: "system"
+      achievements: []   // unlocked ids
     };
   }
 
@@ -37,8 +36,7 @@ const Store = (() => {
       scenarios: Object.assign({}, parsed.scenarios || {}),
       standing: Object.assign({}, parsed.standing || {}),
       journal: Object.assign({ entries: [], propFirm: null }, parsed.journal || {}),
-      achievements: parsed.achievements || [],
-      theme: parsed.theme || "system"
+      achievements: parsed.achievements || []
     };
     return state;
   }
@@ -285,6 +283,15 @@ function renderNav(active) {
     `<button data-route="${r}" class="${active === r ? "active" : ""}">${label}</button>`
   ).join("");
   on(nav, "button", "click", (e) => navigate(e.currentTarget.dataset.route));
+  updateNavStatus();
+}
+
+function updateNavStatus() {
+  const el = document.getElementById("nav-status");
+  if (!el) return;
+  const completedCount = BLOCKS.filter(b => Store.isBlockComplete(b)).length;
+  const currentBlock = BLOCKS.find(b => !Store.isBlockComplete(b)) || BLOCKS[BLOCKS.length - 1];
+  el.innerHTML = `<span class="live-dot"></span>Блок ${currentBlock.id} · ${completedCount}/${BLOCKS.length}`;
 }
 
 /* =========================================================================
@@ -296,7 +303,6 @@ function renderDashboard() {
   const currentBlock = BLOCKS.find(b => !Store.isBlockComplete(b)) || BLOCKS[BLOCKS.length - 1];
 
   const nodes = BLOCKS.map(b => {
-    const pct = Store.blockProgressPct(b);
     const complete = Store.isBlockComplete(b);
     const unlocked = Store.isBlockUnlocked(b.id);
     const isCurrent = b.id === currentBlock.id && !complete;
@@ -305,10 +311,8 @@ function renderDashboard() {
     if (isCurrent) cls.push("current");
     if (!unlocked) cls.push("locked");
     const core = complete ? "✓" : (!unlocked ? "–" : String(b.id));
-    return `<button class="${cls.join(" ")}" data-block="${b.id}" style="--pct:${complete ? 100 : pct}">
-      <span class="stamp-ring ${unlocked ? "" : "locked"}">
-        <span class="stamp-core">${core}</span>
-      </span>
+    return `<button class="${cls.join(" ")}" data-block="${b.id}">
+      <span class="stamp-core">${core}</span>
       <span class="stamp-label">${esc(b.title)}</span>
     </button>`;
   }).join("");
@@ -317,7 +321,7 @@ function renderDashboard() {
     const labels = row.blockIds.map(id => {
       const b = BLOCKS.find(x => x.id === id);
       const done = Store.isBlockComplete(b);
-      return `<span class="pill" style="${done ? "border-color:var(--stamp-green);color:var(--stamp-green)" : ""}">Блок ${id}${done ? " ✓" : ""}</span>`;
+      return `<span class="pill"${done ? ' style="border-color:rgba(52,211,153,0.4);color:var(--color-signal-green)"' : ""}>Блок ${id}${done ? " ✓" : ""}</span>`;
     }).join(" ");
     return `<tr><td>${row.week}</td><td>${labels}</td></tr>`;
   }).join("");
@@ -331,10 +335,15 @@ function renderDashboard() {
   }).join("");
 
   return `
-    <div class="rule-banner"><strong>Правило прохождения:</strong> ${esc(PROGRAM_META.rule)}</div>
+    <div class="hero">
+      <span class="eyebrow">Протокол v3 · 12–13 недель</span>
+      <h1 class="headline-2tone"><span class="l1">Дорожная</span><span class="l2">карта</span></h1>
+      <p class="subhead">11 блоков от матчасти до продвинутого DeFi. Блок закрывается только когда чек-лист выполнен целиком и квиз пройден на 80%+.</p>
+      <div class="rule-note">${esc(PROGRAM_META.rule)}</div>
+    </div>
 
     <div class="card">
-      <h2>Дорожная карта</h2>
+      <span class="eyebrow">Прогресс</span>
       <div class="roadmap">${nodes}</div>
       <div class="overall-tally">
         <div class="tally-figure"><span class="num">${overallPct}%</span><span class="unit">Общий прогресс</span></div>
@@ -344,7 +353,8 @@ function renderDashboard() {
     </div>
 
     <div class="card">
-      <h3>Таймлайн (12-13 недель)</h3>
+      <span class="eyebrow">Таймлайн</span>
+      <h3>12–13 недель</h3>
       <table class="journal-table" style="min-width:0">
         <thead><tr><th>Неделя</th><th>Блок(и)</th></tr></thead>
         <tbody>${timelineRows}</tbody>
@@ -352,6 +362,7 @@ function renderDashboard() {
     </div>
 
     <div class="card">
+      <span class="eyebrow">Всегда на виду</span>
       <h3>Постоянный чек-лист безопасности</h3>
       <p class="faint">Не привязан к блокам — держать перед глазами всегда.</p>
       ${standingItems}
@@ -407,14 +418,18 @@ function renderBlockScreen(id) {
   return `
     <a href="#/dashboard" class="faint">&larr; К дашборду</a>
     <div class="card">
-      <h2>Блок ${id}. ${esc(b.title)} <span class="pill">${esc(b.duration)}</span></h2>
-      ${complete ? `<span class="gate-status pass">Блок пройден</span>` : `<span class="gate-status pending">В работе — ${fmtPct(Store.blockProgressPct(b))}</span>`}
+      <span class="eyebrow">Блок ${id} · ${esc(b.duration)}</span>
+      <h2>${esc(b.title)}</h2>
+      <div class="btn-row" style="margin-top:0;margin-bottom:20px">
+        ${complete ? `<span class="gate-status pass">Блок пройден</span>` : `<span class="gate-status">В работе — ${fmtPct(Store.blockProgressPct(b))}</span>`}
+      </div>
       ${sections}
       ${checkLine}
     </div>
 
     <div class="card">
-      <h3>Практика <span class="pill">${Math.round(checklistFrac * 100)}%</span></h3>
+      <span class="eyebrow">Практика · ${Math.round(checklistFrac * 100)}%</span>
+      <h3>Чек-лист</h3>
       ${checklist}
     </div>
 
@@ -510,6 +525,7 @@ function renderFlashcardsScreen() {
   if (!flashSession.queue.length) {
     return `
       <div class="card">
+        <span class="eyebrow">Spaced repetition</span>
         <h2>Флеш-карты</h2>
         <p>Карточек к повторению сейчас нет (0 due из ${FLASHCARDS.length}).</p>
         <div class="btn-row">
@@ -525,6 +541,7 @@ function renderFlashcardsScreen() {
 
   return `
     <div class="card">
+      <span class="eyebrow">Spaced repetition</span>
       <h2>Флеш-карты <span class="pill">${flashSession.mode === "all" ? "вся колода" : "к повторению"}</span></h2>
       <p class="faint">Карта ${flashSession.pos + 1} из ${flashSession.queue.length} · всего в колоде ${FLASHCARDS.length} · due сейчас: ${dueCount}</p>
       <div class="flash-stage">
@@ -627,7 +644,7 @@ function renderScenariosScreen() {
     </div>`;
   }).join("");
 
-  return `<div class="card"><h2>Applied-сценарии</h2><p class="faint">Не пересказ определения, а применение чек-листа или формулы к конкретному случаю.</p></div>${cards}`;
+  return `<div class="card"><span class="eyebrow">Практика</span><h2>Applied-сценарии</h2><p class="faint">Не пересказ определения, а применение чек-листа или формулы к конкретному случаю.</p></div>${cards}`;
 }
 
 function bindScenariosEvents() {
@@ -743,10 +760,11 @@ function renderPropFirmPanel(entries) {
   });
   const fiftyPctBreaches = totalNet > 0 ? days.filter(d => byDay[d] > 0.5 * totalNet) : [];
 
-  const flag = (ok, text) => `<div class="propfirm-flag ${ok ? "ok" : "breach"}">${ok ? "✓" : "✗"} ${text}</div>`;
+  const flag = (ok, text) => `<div class="propfirm-flag ${ok ? "ok" : "breach"}"><span class="dot"></span>${text}</div>`;
 
   return `<div class="card">
-    <h3>Режим «проп-фирма» <span class="pill">окно ${cfg.start} → ${end.toISOString().slice(0, 10)}</span></h3>
+    <span class="eyebrow">Режим «проп-фирма»</span>
+    <h3>Окно ${cfg.start} → ${end.toISOString().slice(0, 10)}</h3>
     ${flag(dailyBreaches.length === 0, `Дневной лимит убытка (${cfg.dailyLossLimitR}R): ${dailyBreaches.length ? "нарушен в дни " + dailyBreaches.join(", ") : "не нарушен"}`)}
     ${flag(!ddBreachDay, `Общий лимит просадки (${cfg.maxDrawdownR}R): макс. просадка ${maxDD.toFixed(2)}R${ddBreachDay ? " — превышена к " + ddBreachDay : ""}`)}
     ${flag(fiftyPctBreaches.length === 0, `Правило «не больше 50% прибыли за один день»: ${fiftyPctBreaches.length ? "нарушено в дни " + fiftyPctBreaches.join(", ") : (totalNet > 0 ? "не нарушено" : "период пока не в плюсе — правило не применимо")}`)}
@@ -775,6 +793,7 @@ function renderJournalScreen() {
 
   return `
     <div class="card">
+      <span class="eyebrow">Дисциплина</span>
       <h2>Торговый дневник</h2>
       <form id="journal-form" class="form-grid">
         <div><label class="field-label">Дата</label><input type="date" name="date" value="${todayISO()}" required/></div>
@@ -795,6 +814,7 @@ function renderJournalScreen() {
     </div>
 
     <div class="card">
+      <span class="eyebrow">Метрики</span>
       <h3>Статистика</h3>
       <div class="stat-grid">
         <div class="stat-tile"><div class="num">${stats.total}</div><div class="lbl">Всего сделок</div></div>
@@ -810,6 +830,7 @@ function renderJournalScreen() {
     ${renderPropFirmPanel(entries)}
 
     <div class="card">
+      <span class="eyebrow">Журнал</span>
       <h3>Записи</h3>
       <div class="table-wrap">
         <table class="journal-table">
@@ -872,7 +893,7 @@ function renderResourcesScreen() {
       <h4>${esc(g.category)}</h4>
       <ul>${g.items.map(i => `<li>${esc(i)}</li>`).join("")}</ul>
     </div>`).join("");
-  return `<div class="card"><h2>Панель ресурсов</h2>${groups}</div>`;
+  return `<div class="card"><span class="eyebrow">Справочник</span><h2>Панель ресурсов</h2>${groups}</div>`;
 }
 
 /* =========================================================================
@@ -886,28 +907,7 @@ function renderAchievementsScreen() {
       <span class="name">${esc(a.name)}</span>
       <span class="desc">${esc(a.desc)}</span>
     </div>`).join("");
-  return `<div class="card"><h2>Достижения <span class="pill">${unlocked.length}/${ACHIEVEMENTS.length}</span></h2><div class="badge-grid">${badges}</div></div>`;
-}
-
-/* =========================================================================
-   Theme toggle
-   ========================================================================= */
-function initTheme() {
-  const saved = Store.raw.theme;
-  if (saved && saved !== "system") document.documentElement.setAttribute("data-theme", saved);
-  const btn = document.getElementById("theme-toggle");
-  const label = () => (document.documentElement.getAttribute("data-theme") || "system");
-  const render = () => { btn.textContent = { system: "◐ системная", light: "☀ светлая", dark: "☾ тёмная" }[label()]; };
-  render();
-  btn.addEventListener("click", () => {
-    const order = ["system", "light", "dark"];
-    const next = order[(order.indexOf(label()) + 1) % order.length];
-    if (next === "system") document.documentElement.removeAttribute("data-theme");
-    else document.documentElement.setAttribute("data-theme", next);
-    Store.raw.theme = next;
-    Store.persist();
-    render();
-  });
+  return `<div class="card"><span class="eyebrow">Прогресс</span><h2>Достижения <span class="pill">${unlocked.length}/${ACHIEVEMENTS.length}</span></h2><div class="badge-grid">${badges}</div></div>`;
 }
 
 /* =========================================================================
@@ -916,6 +916,5 @@ function initTheme() {
 window.addEventListener("hashchange", render);
 window.addEventListener("DOMContentLoaded", () => {
   Store.load();
-  initTheme();
   render();
 });

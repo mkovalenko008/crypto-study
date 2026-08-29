@@ -4,18 +4,23 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Crypto Study — протокол прохождения</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet"/>
   <link rel="stylesheet" href="style.css"/>
 </head>
 <body>
   <div class="app-shell">
     <header class="masthead">
-      <div class="masthead-title">Протокол изучения крипты <span class="doc-no">v3</span></div>
+      <div class="brand">
+        <span class="dot"></span>
+        <span class="wordmark">CRYPTO STUDY<span class="muted"> · протокол v3</span></span>
+      </div>
+      <nav class="tabs" id="tabs"></nav>
       <div class="masthead-meta">
-        12–13 недель · 11 блоков
-        <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Переключить тему">◐ системная</button>
+        <span class="status-pill" id="nav-status"><span class="live-dot"></span>—</span>
       </div>
     </header>
-    <nav class="tabs" id="tabs"></nav>
     <main id="view"></main>
   </div>
 
