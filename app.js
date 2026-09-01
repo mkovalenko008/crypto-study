@@ -338,7 +338,7 @@ function renderDashboard() {
     <div class="hero">
       <span class="eyebrow">Протокол v3 · ${BLOCKS.length} блоков</span>
       <h1 class="headline-2tone"><span class="l1">Дорожная</span><span class="l2">карта</span></h1>
-      <p class="subhead">${BLOCKS.length} блоков от матчасти до поиска прибыльных монет. Блок закрывается только когда чек-лист выполнен целиком и квиз пройден на 80%+.</p>
+      <p class="subhead">${BLOCKS.length} блоков — от основ блокчейна до трейдинга и мемкоин-спекуляций. Блок закрывается только когда чек-лист выполнен целиком и квиз пройден на 80%+.</p>
       <div class="rule-note">${esc(PROGRAM_META.rule)}</div>
     </div>
 
