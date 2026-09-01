@@ -199,7 +199,9 @@ function checkJournalAchievements() {
 }
 
 function checkPropFirmAchievements() {
-  const status = computePropFirmStatus(Store.raw.journal.entries, Store.raw.journal.propFirm);
+  const entries = Store.raw.journal.entries;
+  const limits = computeAutoRiskLimits(journalStats(entries));
+  const status = computePropFirmStatus(entries, Store.raw.journal.propFirm, limits);
   if (!status) return;
   const clean = status.dailyBreaches.length === 0 && !status.ddBreachDay && status.fiftyPctBreaches.length === 0 && status.days.length >= 5;
   if (clean) Store.unlockAchievement("propfirm-clean");
@@ -519,7 +521,7 @@ function computeBotSummary(bot) {
     balTotal += c.balance;
     tradeCount += c.trades.length;
     if (c.position) openCount++;
-    c.trades.forEach(t => allTrades.push({ exit_time: t.exit_time, pnl_usdt: t.pnl_usdt }));
+    c.trades.forEach(t => allTrades.push({ sym: sym.replace("USDT", ""), ...t }));
     const pct = c.starting_capital ? ((c.balance - c.starting_capital) / c.starting_capital * 100) : 0;
     perCoin.push({ sym: sym.replace("USDT", ""), pct, trades: c.trades.length, position: c.position });
   }
@@ -527,10 +529,32 @@ function computeBotSummary(bot) {
   let cum = startTotal;
   const curve = [cum];
   allTrades.forEach(t => { cum += t.pnl_usdt; curve.push(cum); });
+  const tradesDesc = allTrades.slice().sort((a, b) => b.exit_time.localeCompare(a.exit_time));
   perCoin.sort((a, b) => b.pct - a.pct);
   const resultUsdt = balTotal - startTotal;
   const resultPct = startTotal ? (resultUsdt / startTotal * 100) : 0;
-  return { startTotal, balTotal, tradeCount, openCount, coinCount, curve, perCoin, resultUsdt, resultPct };
+  return { startTotal, balTotal, tradeCount, openCount, coinCount, curve, perCoin, trades: tradesDesc, resultUsdt, resultPct };
+}
+
+function renderTradesTable(trades) {
+  if (!trades.length) return `<p class="faint">Сделок пока нет.</p>`;
+  const rows = trades.map(t => {
+    const time = new Date(t.exit_time).toLocaleString([], { dateStyle: "short", timeStyle: "short" });
+    return `<tr>
+      <td>${esc(t.sym)}</td>
+      <td>${esc(t.side)}</td>
+      <td>${t.entry_price}</td>
+      <td>${t.exit_price}</td>
+      <td class="${t.pnl_pct >= 0 ? "r-pos" : "r-neg"}">${t.pnl_pct >= 0 ? "+" : ""}${t.pnl_pct.toFixed(2)}%</td>
+      <td class="${t.pnl_usdt >= 0 ? "r-pos" : "r-neg"}">${t.pnl_usdt >= 0 ? "+" : ""}${t.pnl_usdt.toFixed(3)}</td>
+      <td class="wrap">${esc(t.exit_reason)}</td>
+      <td>${time}</td>
+    </tr>`;
+  }).join("");
+  return `<div class="table-wrap"><table class="journal-table">
+    <thead><tr><th>Монета</th><th>Сторона</th><th>Вход</th><th>Выход</th><th>PnL %</th><th>PnL USDT</th><th>Причина выхода</th><th>Время выхода</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table></div>`;
 }
 
 function renderLineChart(points) {
@@ -585,6 +609,10 @@ function renderBotCard(bot) {
           <tbody>${rows}</tbody>
         </table>
       </div>
+      <details style="margin-top:16px">
+        <summary class="faint" style="cursor:pointer">Показать все сделки (${s.trades.length})</summary>
+        <div style="margin-top:10px">${renderTradesTable(s.trades)}</div>
+      </details>
       <p class="faint" style="margin-top:14px">${esc(bot.method_note)}</p>
     </div>`;
 }
@@ -625,7 +653,6 @@ function renderBotsScreen() {
    Trading journal
    ========================================================================= */
 function computeR(entry) {
-  if (entry.manualR !== null && entry.manualR !== undefined && entry.manualR !== "") return parseFloat(entry.manualR);
   const { entryPrice, stopPrice, exitPrice, direction } = entry;
   if ([entryPrice, stopPrice, exitPrice].some(v => v === null || v === undefined || v === "")) return null;
   const e = parseFloat(entryPrice), st = parseFloat(stopPrice), ex = parseFloat(exitPrice);
@@ -666,9 +693,26 @@ function renderEquityCurve(withR) {
   <p class="faint">Кумулятивный R по ${points.length} сделкам с посчитанным результатом. Итого: ${cum.toFixed(2)}R</p>`;
 }
 
+/* Daily loss limit / drawdown limit are never typed in — they're derived
+   so the number always reflects reality instead of a stale manual guess.
+   With loss history: 2x / 6x the average R lost per losing trade. With
+   none yet (a fresh journal), fall back to the standard "1 trade's risk
+   = 1R" unit from Block 6's position-sizing rule (2R / 6R) until real
+   losses exist to compute from. */
+function computeAutoRiskLimits(stats) {
+  if (stats.avgLossR > 0) {
+    return {
+      dailyLossLimitR: Math.round(stats.avgLossR * 2 * 10) / 10,
+      maxDrawdownR: Math.round(stats.avgLossR * 6 * 10) / 10,
+      source: "history"
+    };
+  }
+  return { dailyLossLimitR: 2, maxDrawdownR: 6, source: "baseline" };
+}
+
 /* Shared by the panel (display) and the achievement checker, so the two
    never disagree about what counts as a breach. */
-function computePropFirmStatus(entries, cfg) {
+function computePropFirmStatus(entries, cfg, limits) {
   if (!cfg) return null;
   const start = new Date(cfg.start);
   const end = new Date(start); end.setDate(end.getDate() + 30);
@@ -680,13 +724,13 @@ function computePropFirmStatus(entries, cfg) {
   const days = Object.keys(byDay).sort();
   const totalNet = days.reduce((s, d) => s + byDay[d], 0);
 
-  const dailyBreaches = days.filter(d => byDay[d] < -Math.abs(cfg.dailyLossLimitR));
+  const dailyBreaches = days.filter(d => byDay[d] < -Math.abs(limits.dailyLossLimitR));
   let peak = 0, cum = 0, maxDD = 0, ddBreachDay = null;
   days.forEach(d => {
     cum += byDay[d];
     if (cum > peak) peak = cum;
     const dd = peak - cum;
-    if (dd > maxDD) { maxDD = dd; if (dd > cfg.maxDrawdownR) ddBreachDay = d; }
+    if (dd > maxDD) { maxDD = dd; if (dd > limits.maxDrawdownR) ddBreachDay = d; }
   });
   const fiftyPctBreaches = totalNet > 0 ? days.filter(d => byDay[d] > 0.5 * totalNet) : [];
 
@@ -723,36 +767,39 @@ function renderDailyRChart(byDay, dailyLossLimitR) {
 
 function renderPropFirmPanel(entries, stats) {
   const cfg = Store.raw.journal.propFirm;
-  const suggestedDaily = stats.avgLossR > 0 ? Math.round(stats.avgLossR * 2 * 10) / 10 : 2;
-  const suggestedDD = stats.avgLossR > 0 ? Math.round(stats.avgLossR * 6 * 10) / 10 : 6;
-  const autoNote = stats.avgLossR > 0
-    ? `<p class="faint">Предложено автоматически по твоей истории (2× и 6× среднего R убытка) — можно поменять.</p>`
-    : `<p class="faint">Пока нет убыточных сделок для расчёта — стоят дефолты, можно поменять.</p>`;
+  const limits = computeAutoRiskLimits(stats);
+  const sourceNote = limits.source === "history"
+    ? `Лимиты пересчитаны автоматически по факту сделок: 2× и 6× твоего среднего R убытка (${stats.avgLossR.toFixed(2)}R). Появятся новые убыточные сделки — пересчитается сама.`
+    : `Пока нет убыточных сделок для расчёта — лимиты взяты от стандартной единицы риска (1R = риск одной сделки по правилу Блока 6): 2R и 6R. Появятся убыточные сделки — пересчитается автоматически, вводить вручную не нужно.`;
+  const limitsBlock = `
+    <p class="faint">${sourceNote}</p>
+    <div class="stat-grid" style="margin:12px 0">
+      <div class="stat-tile"><div class="num">${limits.dailyLossLimitR}R</div><div class="lbl">Дневной лимит убытка</div></div>
+      <div class="stat-tile"><div class="num">${limits.maxDrawdownR}R</div><div class="lbl">Общий лимит просадки</div></div>
+    </div>`;
   const formHtml = `
     <details ${cfg ? "" : "open"}>
       <summary class="faint" style="cursor:pointer">${cfg ? "Настройки режима «проп-фирма»" : "Включить режим «проп-фирма»"}</summary>
-      ${cfg ? "" : autoNote}
-      <div class="form-grid" style="margin-top:10px">
+      ${limitsBlock}
+      <div class="form-grid">
         <div><label class="field-label">Дата начала окна (30 дней)</label><input type="date" id="pf-start" value="${cfg ? cfg.start : todayISO()}"/></div>
-        <div><label class="field-label">Дневной лимит убытка, R</label><input type="number" step="0.1" id="pf-daily" value="${cfg ? cfg.dailyLossLimitR : suggestedDaily}"/></div>
-        <div><label class="field-label">Общий лимит просадки, R</label><input type="number" step="0.1" id="pf-dd" value="${cfg ? cfg.maxDrawdownR : suggestedDD}"/></div>
       </div>
-      <div class="btn-row"><button class="btn primary" id="pf-save">Сохранить настройки</button>${cfg ? `<button class="btn danger" id="pf-disable">Выключить режим</button>` : ""}</div>
+      <div class="btn-row"><button class="btn primary" id="pf-save">${cfg ? "Обновить окно" : "Включить режим"}</button>${cfg ? `<button class="btn danger" id="pf-disable">Выключить режим</button>` : ""}</div>
     </details>`;
 
   if (!cfg) return `<div class="card"><h3>Режим «проп-фирма»</h3>${formHtml}</div>`;
 
-  const status = computePropFirmStatus(entries, cfg);
+  const status = computePropFirmStatus(entries, cfg, limits);
   const flag = (ok, text) => `<div class="propfirm-flag ${ok ? "ok" : "breach"}"><span class="dot"></span>${text}</div>`;
 
   return `<div class="card">
     <span class="eyebrow">Режим «проп-фирма»</span>
     <h3>Окно ${cfg.start} → ${status.end.toISOString().slice(0, 10)}</h3>
-    ${flag(status.dailyBreaches.length === 0, `Дневной лимит убытка (${cfg.dailyLossLimitR}R): ${status.dailyBreaches.length ? "нарушен в дни " + status.dailyBreaches.join(", ") : "не нарушен"}`)}
-    ${flag(!status.ddBreachDay, `Общий лимит просадки (${cfg.maxDrawdownR}R): макс. просадка ${status.maxDD.toFixed(2)}R${status.ddBreachDay ? " — превышена к " + status.ddBreachDay : ""}`)}
+    ${flag(status.dailyBreaches.length === 0, `Дневной лимит убытка (${limits.dailyLossLimitR}R): ${status.dailyBreaches.length ? "нарушен в дни " + status.dailyBreaches.join(", ") : "не нарушен"}`)}
+    ${flag(!status.ddBreachDay, `Общий лимит просадки (${limits.maxDrawdownR}R): макс. просадка ${status.maxDD.toFixed(2)}R${status.ddBreachDay ? " — превышена к " + status.ddBreachDay : ""}`)}
     ${flag(status.fiftyPctBreaches.length === 0, `Правило «не больше 50% прибыли за один день»: ${status.fiftyPctBreaches.length ? "нарушено в дни " + status.fiftyPctBreaches.join(", ") : (status.totalNet > 0 ? "не нарушено" : "период пока не в плюсе — правило не применимо")}`)}
     <p class="faint">Итог по сделкам в окне: ${status.totalNet.toFixed(2)}R за ${status.days.length} торговых дней.</p>
-    ${renderDailyRChart(status.byDay, cfg.dailyLossLimitR)}
+    ${renderDailyRChart(status.byDay, limits.dailyLossLimitR)}
     ${formHtml}
   </div>`;
 }
@@ -790,7 +837,6 @@ function renderJournalScreen() {
         <div><label class="field-label">Цена стопа, SL (опц.)</label><input type="number" step="any" name="stopPrice"/></div>
         <div><label class="field-label">Тейк-профит, PL (опц.)</label><input type="number" step="any" name="takeProfitPrice"/></div>
         <div><label class="field-label">Факт. цена выхода (опц.)</label><input type="number" step="any" name="exitPrice"/></div>
-        <div><label class="field-label">R вручную (если цены не даны)</label><input type="number" step="any" name="manualR"/></div>
         <div class="full"><label class="field-label">Тезис входа (1 предложение)</label><input type="text" name="thesis" required/></div>
         <div class="full"><label class="field-label">План выхода</label><input type="text" name="exitPlan"/></div>
         <div class="full"><label class="field-label">Что пошло не по плану</label><textarea name="deviationNote"></textarea></div>
@@ -843,7 +889,6 @@ function bindJournalEvents() {
       stopPrice: fd.get("stopPrice") || "",
       takeProfitPrice: fd.get("takeProfitPrice") || "",
       exitPrice: fd.get("exitPrice") || "",
-      manualR: fd.get("manualR") || "",
       thesis: fd.get("thesis").trim(),
       exitPlan: fd.get("exitPlan").trim(),
       deviationNote: fd.get("deviationNote").trim()
@@ -862,9 +907,7 @@ function bindJournalEvents() {
   const pfSave = view.querySelector("#pf-save");
   if (pfSave) pfSave.addEventListener("click", () => {
     const start = view.querySelector("#pf-start").value || todayISO();
-    const dailyLossLimitR = parseFloat(view.querySelector("#pf-daily").value) || 2;
-    const maxDrawdownR = parseFloat(view.querySelector("#pf-dd").value) || 6;
-    Store.setPropFirm({ start, dailyLossLimitR, maxDrawdownR });
+    Store.setPropFirm({ start });
     Store.unlockAchievement("propfirm-enabled");
     checkPropFirmAchievements();
     render();
