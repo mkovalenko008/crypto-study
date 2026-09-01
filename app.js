@@ -17,7 +17,8 @@ const Store = (() => {
       scenarios: {},      // id -> { done, userAnswer }
       standing: {},        // idx -> bool
       journal: { entries: [], propFirm: null },
-      achievements: []   // unlocked ids
+      achievements: [],  // unlocked ids
+      coinChecks: []      // saved coin due-diligence checks
     };
   }
 
@@ -36,7 +37,8 @@ const Store = (() => {
       scenarios: Object.assign({}, parsed.scenarios || {}),
       standing: Object.assign({}, parsed.standing || {}),
       journal: Object.assign({ entries: [], propFirm: null }, parsed.journal || {}),
-      achievements: parsed.achievements || []
+      achievements: parsed.achievements || [],
+      coinChecks: parsed.coinChecks || []
     };
     return state;
   }
@@ -163,6 +165,17 @@ const Store = (() => {
     return true;
   }
 
+  function addCoinCheck(entry) {
+    load();
+    state.coinChecks.unshift(entry);
+    persist();
+  }
+  function deleteCoinCheck(id) {
+    load();
+    state.coinChecks = state.coinChecks.filter(c => c.id !== id);
+    persist();
+  }
+
   return {
     load, persist,
     getBlock, setChecklistItem, recordQuizResult,
@@ -171,6 +184,7 @@ const Store = (() => {
     getScenario, setScenarioAnswer, markScenarioDone,
     toggleStanding,
     addJournalEntry, deleteJournalEntry, setPropFirm,
+    addCoinCheck, deleteCoinCheck,
     unlockAchievement,
     get raw() { return load(); }
   };
@@ -181,6 +195,7 @@ const Store = (() => {
    ========================================================================= */
 const ACHIEVEMENTS = [
   { id: "journal-first", glyph: "✎", name: "Первая запись", desc: "Первая сделка в торговом дневнике" },
+  { id: "coincheck-first", glyph: "◎", name: "Первая проверка", desc: "Первая проверка монеты по чек-листу" },
   { id: "first-block", glyph: "⚑", name: "Первый блок", desc: "Закрыт первый блок программы" },
   { id: "five-blocks", glyph: "⚔", name: "Экватор", desc: "Закрыто 5 блоков" },
   { id: "all-blocks", glyph: "★", name: "Протокол закрыт", desc: "Пройдены все блоки программы" },
@@ -227,6 +242,10 @@ function checkJournalAchievements() {
   if (streak >= 30) Store.unlockAchievement("journal-streak-30");
 }
 
+function checkCoinCheckAchievements() {
+  if (Store.raw.coinChecks.length >= 1) Store.unlockAchievement("coincheck-first");
+}
+
 /* =========================================================================
    Small utilities
    ========================================================================= */
@@ -242,7 +261,7 @@ function on(root, selector, event, handler) {
 /* =========================================================================
    Router
    ========================================================================= */
-const ROUTES = ["dashboard", "block", "flashcards", "scenarios", "journal", "resources", "achievements"];
+const ROUTES = ["dashboard", "block", "flashcards", "scenarios", "coincheck", "journal", "resources", "achievements"];
 
 function parseHash() {
   const raw = (location.hash || "#/dashboard").replace(/^#\//, "");
@@ -261,6 +280,7 @@ function render() {
   else if (name === "block") { view.innerHTML = renderBlockScreen(parseInt(arg, 10)); bindBlockEvents(parseInt(arg, 10)); }
   else if (name === "flashcards") { view.innerHTML = renderFlashcardsScreen(); bindFlashcardsEvents(); }
   else if (name === "scenarios") { view.innerHTML = renderScenariosScreen(); bindScenariosEvents(); }
+  else if (name === "coincheck") { view.innerHTML = renderCoinCheckScreen(); bindCoinCheckEvents(); }
   else if (name === "journal") { view.innerHTML = renderJournalScreen(); bindJournalEvents(); }
   else if (name === "resources") view.innerHTML = renderResourcesScreen();
   else if (name === "achievements") view.innerHTML = renderAchievementsScreen();
@@ -275,6 +295,7 @@ function renderNav(active) {
     ["dashboard", "Дашборд"],
     ["flashcards", "Флеш-карты"],
     ["scenarios", "Сценарии"],
+    ["coincheck", "Проверка монеты"],
     ["journal", "Дневник"],
     ["resources", "Ресурсы"],
     ["achievements", "Достижения"]
@@ -687,6 +708,112 @@ function bindScenariosEvents() {
       Store.markScenarioDone(id, true);
       checkScenarioAchievements();
     }
+  });
+}
+
+/* =========================================================================
+   Coin check — reusable due-diligence checklist (Block 2 / Block 4 criteria)
+   No AI, no backend: a rule-based read of the numbers you enter, saved
+   locally so you can revisit past checks. This is a filter, not a verdict —
+   the wording below deliberately avoids "safe to buy" framing.
+   ========================================================================= */
+function computeCoinFlags(e) {
+  const flags = [];
+  const num = (v) => (v === "" || v === null || v === undefined ? null : parseFloat(v));
+  const fdv = num(e.fdv), mcap = num(e.marketCap);
+  if (fdv !== null && mcap !== null && mcap > 0) {
+    const ratio = fdv / mcap;
+    if (ratio >= 3) flags.push({ sev: "danger", text: `FDV/Market Cap = ${ratio.toFixed(1)}x — большой разрыв, скрытая будущая инфляция предложения (Блок 2)` });
+    else if (ratio >= 1.5) flags.push({ sev: "warning", text: `FDV/Market Cap = ${ratio.toFixed(1)}x — разрыв заметен, стоит понимать график анлоков` });
+  }
+  const teamPct = num(e.teamPct), cliff = num(e.cliffMonths);
+  if (teamPct !== null) {
+    if (teamPct >= 30 && cliff !== null && cliff <= 3) flags.push({ sev: "danger", text: `${teamPct}% у команды/фонда, крупный анлок через ${cliff} мес. — ожидаемое давление на продажу (Блок 2)` });
+    else if (teamPct >= 40) flags.push({ sev: "warning", text: `${teamPct}% у команды/фонда/инвесторов — высокая концентрация, проверь график вестинга` });
+  }
+  const top10 = num(e.top10Pct);
+  if (top10 !== null) {
+    if (top10 >= 50) flags.push({ sev: "danger", text: `Топ-10 кошельков держат ${top10}% саплая — высокий риск манипуляции ценой (Блок 2)` });
+    else if (top10 >= 30) flags.push({ sev: "warning", text: `Топ-10 кошельков держат ${top10}% саплая — концентрация выше среднего` });
+  }
+  if (e.hasAudit === "no") flags.push({ sev: "danger", text: "Нет открытого аудита — технический due diligence не пройден (Блок 2)" });
+  else if (e.hasAudit === "unknown") flags.push({ sev: "warning", text: "Аудит не проверен — обязательно проверить перед вложением" });
+  if (e.githubActive === "no") flags.push({ sev: "warning", text: "GitHub неактивен — возможно заброшенный репозиторий (Блок 2)" });
+  if (e.scamFlags === "yes") flags.push({ sev: "danger", text: "RugCheck/TokenSniffer нашли скам-признаки (honeypot/mint-права) — не входить (Блок 2)" });
+  if (e.liquidityLocked === "no") flags.push({ sev: "danger", text: "Ликвидность не залочена — классический риск rug pull (Блок 2)" });
+  const apy = num(e.apy);
+  if (apy !== null && apy > 20) flags.push({ sev: "danger", text: `Заявленный APY ${apy}% выше рыночного — красный флаг по APY, проверить механику (Блок 4/5)` });
+  return flags;
+}
+
+function renderCoinCheckScreen() {
+  const checks = Store.raw.coinChecks;
+  const rows = checks.map(c => {
+    const flags = computeCoinFlags(c);
+    const dangerCount = flags.filter(f => f.sev === "danger").length;
+    const verdict = dangerCount > 0 ? `${dangerCount} красных флаг(ов)` : (flags.length ? "есть вопросы без ответа" : "явных флагов нет");
+    return `<div class="card">
+      <span class="eyebrow">${esc(c.date)}</span>
+      <h3>${esc(c.name)} <span class="pill" style="${dangerCount ? "border-color:var(--color-ember-border);color:var(--color-ember-glow)" : (flags.length ? "" : "border-color:rgba(52,211,153,0.4);color:var(--color-signal-green)")}">${verdict}</span></h3>
+      ${flags.length ? flags.map(f => `<div class="propfirm-flag breach"><span class="dot"></span>${f.sev === "danger" ? "✗" : "?"} ${esc(f.text)}</div>`).join("")
+      : `<div class="propfirm-flag ok"><span class="dot"></span>Явных красных флагов по введённым данным нет</div>`}
+      ${c.note ? `<p class="faint" style="margin-top:10px">Заметка: ${esc(c.note)}</p>` : ""}
+      <div class="btn-row"><button class="btn btn-danger" data-del-check="${c.id}">Удалить</button></div>
+    </div>`;
+  }).join("");
+
+  return `
+    <div class="card">
+      <span class="eyebrow">Чек-лист Блока 2</span>
+      <h2>Проверка монеты</h2>
+      <p class="faint">Введи то, что удалось найти по монете — приложение подсветит несоответствия критериям Блока 2 (и APY-флаг из Блока 4). Это фильтр по твоим же данным, а не гарантия и не вердикт «покупай/не покупай» — отсутствие флагов не отменяет риск-менеджмент Блока 3.</p>
+      <form id="coincheck-form" class="form-grid">
+        <div><label class="field-label">Название/тикер</label><input type="text" name="name" required/></div>
+        <div><label class="field-label">Дата</label><input type="date" name="date" value="${todayISO()}" required/></div>
+        <div><label class="field-label">FDV, $</label><input type="number" step="any" name="fdv" placeholder="напр. 2000000000"/></div>
+        <div><label class="field-label">Market cap (обращающийся), $</label><input type="number" step="any" name="marketCap"/></div>
+        <div><label class="field-label">% у команды/фонда/инвесторов</label><input type="number" step="any" name="teamPct"/></div>
+        <div><label class="field-label">Ближайший крупный анлок, мес.</label><input type="number" step="any" name="cliffMonths"/></div>
+        <div><label class="field-label">% саплая у топ-10 кошельков</label><input type="number" step="any" name="top10Pct"/></div>
+        <div><label class="field-label">Заявленный APY, % (0 если нет)</label><input type="number" step="any" name="apy"/></div>
+        <div><label class="field-label">Открытый аудит от известной фирмы?</label>
+          <select name="hasAudit"><option value="unknown">Не проверял(а)</option><option value="yes">Да</option><option value="no">Нет</option></select>
+        </div>
+        <div><label class="field-label">GitHub активен?</label>
+          <select name="githubActive"><option value="unknown">Не проверял(а)</option><option value="yes">Да</option><option value="no">Нет</option></select>
+        </div>
+        <div><label class="field-label">RugCheck/TokenSniffer нашли скам-флаги?</label>
+          <select name="scamFlags"><option value="unknown">Не проверял(а)</option><option value="no">Нет</option><option value="yes">Да</option></select>
+        </div>
+        <div><label class="field-label">Ликвидность залочена?</label>
+          <select name="liquidityLocked"><option value="unknown">Не проверял(а)</option><option value="yes">Да</option><option value="no">Нет</option></select>
+        </div>
+        <div class="full"><label class="field-label">Заметка / тезис</label><textarea name="note"></textarea></div>
+        <div class="full btn-row"><button type="submit" class="btn">Проверить и сохранить</button></div>
+      </form>
+      <div id="coincheck-preview"></div>
+    </div>
+    ${rows || `<div class="card faint">Пока нет сохранённых проверок.</div>`}
+  `;
+}
+
+function bindCoinCheckEvents() {
+  const view = document.getElementById("view");
+  const form = view.querySelector("#coincheck-form");
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const fd = new FormData(form);
+    const entry = { id: uid() };
+    ["name", "date", "fdv", "marketCap", "teamPct", "cliffMonths", "top10Pct", "apy", "hasAudit", "githubActive", "scamFlags", "liquidityLocked", "note"].forEach(k => {
+      entry[k] = fd.get(k);
+    });
+    Store.addCoinCheck(entry);
+    checkCoinCheckAchievements();
+    render();
+  });
+  on(view, "[data-del-check]", "click", (e) => {
+    Store.deleteCoinCheck(e.currentTarget.dataset.delCheck);
+    render();
   });
 }
 
