@@ -13,12 +13,9 @@ const Store = (() => {
   function defaults() {
     return {
       blocks: {},        // id -> { checklist: {idx:true}, quizBest: 0, quizAttempts: 0, firstTry100: false }
-      flashcards: {},     // id -> { box, next_review (ISO) }
-      scenarios: {},      // id -> { done, userAnswer }
       standing: {},        // idx -> bool
       journal: { entries: [], propFirm: null },
-      achievements: [],  // unlocked ids
-      coinChecks: []      // saved coin due-diligence checks
+      achievements: []   // unlocked ids
     };
   }
 
@@ -33,12 +30,9 @@ const Store = (() => {
     if (!parsed) { state = d; return state; }
     state = {
       blocks: Object.assign({}, parsed.blocks || {}),
-      flashcards: Object.assign({}, parsed.flashcards || {}),
-      scenarios: Object.assign({}, parsed.scenarios || {}),
       standing: Object.assign({}, parsed.standing || {}),
       journal: Object.assign({ entries: [], propFirm: null }, parsed.journal || {}),
-      achievements: parsed.achievements || [],
-      coinChecks: parsed.coinChecks || []
+      achievements: parsed.achievements || []
     };
     return state;
   }
@@ -97,44 +91,6 @@ const Store = (() => {
     return isBlockComplete(prev);
   }
 
-  function getFlashcard(id) {
-    load();
-    if (!state.flashcards[id]) {
-      state.flashcards[id] = { box: 1, next_review: new Date(0).toISOString() };
-    }
-    return state.flashcards[id];
-  }
-
-  const LEITNER_INTERVAL_DAYS = { 1: 0, 2: 1, 3: 3, 4: 7, 5: 16 };
-
-  function reviewFlashcard(id, correct) {
-    const c = getFlashcard(id);
-    if (correct) {
-      c.box = Math.min(5, c.box + 1);
-    } else {
-      c.box = 1;
-    }
-    const days = LEITNER_INTERVAL_DAYS[c.box] || 0;
-    const next = new Date();
-    next.setDate(next.getDate() + days);
-    c.next_review = next.toISOString();
-    persist();
-    return c;
-  }
-
-  function dueFlashcards() {
-    const now = new Date();
-    return FLASHCARDS.filter(fc => new Date(getFlashcard(fc.id).next_review) <= now);
-  }
-
-  function getScenario(id) {
-    load();
-    if (!state.scenarios[id]) state.scenarios[id] = { done: false, userAnswer: "" };
-    return state.scenarios[id];
-  }
-  function setScenarioAnswer(id, text) { getScenario(id).userAnswer = text; persist(); }
-  function markScenarioDone(id, val) { getScenario(id).done = val; persist(); }
-
   function toggleStanding(idx) {
     load();
     state.standing[idx] = !state.standing[idx];
@@ -165,26 +121,12 @@ const Store = (() => {
     return true;
   }
 
-  function addCoinCheck(entry) {
-    load();
-    state.coinChecks.unshift(entry);
-    persist();
-  }
-  function deleteCoinCheck(id) {
-    load();
-    state.coinChecks = state.coinChecks.filter(c => c.id !== id);
-    persist();
-  }
-
   return {
     load, persist,
     getBlock, setChecklistItem, recordQuizResult,
     blockChecklistFraction, blockProgressPct, isBlockComplete, isBlockUnlocked,
-    getFlashcard, reviewFlashcard, dueFlashcards, LEITNER_INTERVAL_DAYS,
-    getScenario, setScenarioAnswer, markScenarioDone,
     toggleStanding,
     addJournalEntry, deleteJournalEntry, setPropFirm,
-    addCoinCheck, deleteCoinCheck,
     unlockAchievement,
     get raw() { return load(); }
   };
@@ -195,15 +137,16 @@ const Store = (() => {
    ========================================================================= */
 const ACHIEVEMENTS = [
   { id: "journal-first", glyph: "✎", name: "Первая запись", desc: "Первая сделка в торговом дневнике" },
-  { id: "coincheck-first", glyph: "◎", name: "Первая проверка", desc: "Первая проверка монеты по чек-листу" },
   { id: "first-block", glyph: "⚑", name: "Первый блок", desc: "Закрыт первый блок программы" },
   { id: "five-blocks", glyph: "⚔", name: "Экватор", desc: "Закрыто 5 блоков" },
   { id: "all-blocks", glyph: "★", name: "Протокол закрыт", desc: "Пройдены все блоки программы" },
   { id: "quiz-perfect", glyph: "✓", name: "С первой попытки", desc: "Квиз на 100% с первой попытки" },
-  { id: "flashcards-clean", glyph: "◈", name: "Чистая колода", desc: "Вся колода флеш-карт без ошибок за сессию" },
   { id: "journal-streak-7", glyph: "◯", name: "Неделя дисциплины", desc: "7 дней подряд с записью в дневник" },
   { id: "journal-streak-30", glyph: "◉", name: "Месяц дисциплины", desc: "30 дней подряд с записью в дневник" },
-  { id: "scenario-master", glyph: "⚙", name: "Применено на практике", desc: "Разобраны все applied-сценарии" }
+  { id: "standing-complete", glyph: "◆", name: "Протокол безопасности", desc: "Отмечены все пункты постоянного чек-листа безопасности" },
+  { id: "journal-10-trades", glyph: "▦", name: "Десять сделок", desc: "10 записей в торговом дневнике" },
+  { id: "journal-positive-expectancy", glyph: "▲", name: "Положительное мат. ожидание", desc: "Expectancy выше нуля при 10+ сделках с посчитанным R" },
+  { id: "propfirm-clean", glyph: "⛨", name: "Дисциплина проп-фирмы", desc: "Все правила режима «проп-фирма» соблюдены за окно" }
 ];
 
 function checkBlockAchievements() {
@@ -213,9 +156,10 @@ function checkBlockAchievements() {
   if (completed >= BLOCKS.length) Store.unlockAchievement("all-blocks");
 }
 
-function checkScenarioAchievements() {
-  const allDone = SCENARIOS.every(s => Store.getScenario(s.id).done);
-  if (allDone) Store.unlockAchievement("scenario-master");
+function checkStandingAchievements() {
+  const standing = Store.raw.standing;
+  const all = PROGRAM_META.standingChecklist.every((_, i) => !!standing[i]);
+  if (all) Store.unlockAchievement("standing-complete");
 }
 
 function currentJournalStreak() {
@@ -236,14 +180,21 @@ function currentJournalStreak() {
 }
 
 function checkJournalAchievements() {
-  if (Store.raw.journal.entries.length >= 1) Store.unlockAchievement("journal-first");
+  const entries = Store.raw.journal.entries;
+  if (entries.length >= 1) Store.unlockAchievement("journal-first");
+  if (entries.length >= 10) Store.unlockAchievement("journal-10-trades");
   const streak = currentJournalStreak();
   if (streak >= 7) Store.unlockAchievement("journal-streak-7");
   if (streak >= 30) Store.unlockAchievement("journal-streak-30");
+  const stats = journalStats(entries);
+  if (stats.withRCount >= 10 && stats.expectancy > 0) Store.unlockAchievement("journal-positive-expectancy");
 }
 
-function checkCoinCheckAchievements() {
-  if (Store.raw.coinChecks.length >= 1) Store.unlockAchievement("coincheck-first");
+function checkPropFirmAchievements() {
+  const status = computePropFirmStatus(Store.raw.journal.entries, Store.raw.journal.propFirm);
+  if (!status) return;
+  const clean = status.dailyBreaches.length === 0 && !status.ddBreachDay && status.fiftyPctBreaches.length === 0 && status.days.length >= 5;
+  if (clean) Store.unlockAchievement("propfirm-clean");
 }
 
 /* =========================================================================
@@ -253,7 +204,6 @@ function uid() { return Date.now().toString(36) + Math.random().toString(36).sli
 function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 function fmtPct(n) { return `${Math.round(n)}%`; }
 function todayISO() { return new Date().toISOString().slice(0, 10); }
-function shuffle(arr) { const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1));[a[i], a[j]] = [a[j], a[i]]; } return a; }
 function on(root, selector, event, handler) {
   root.querySelectorAll(selector).forEach(el => el.addEventListener(event, handler));
 }
@@ -261,7 +211,7 @@ function on(root, selector, event, handler) {
 /* =========================================================================
    Router
    ========================================================================= */
-const ROUTES = ["dashboard", "block", "flashcards", "scenarios", "coincheck", "journal", "resources", "achievements"];
+const ROUTES = ["dashboard", "block", "bots", "journal", "resources", "achievements"];
 
 function parseHash() {
   const raw = (location.hash || "#/dashboard").replace(/^#\//, "");
@@ -278,9 +228,7 @@ function render() {
   const view = document.getElementById("view");
   if (name === "dashboard") view.innerHTML = renderDashboard();
   else if (name === "block") { view.innerHTML = renderBlockScreen(parseInt(arg, 10)); bindBlockEvents(parseInt(arg, 10)); }
-  else if (name === "flashcards") { view.innerHTML = renderFlashcardsScreen(); bindFlashcardsEvents(); }
-  else if (name === "scenarios") { view.innerHTML = renderScenariosScreen(); bindScenariosEvents(); }
-  else if (name === "coincheck") { view.innerHTML = renderCoinCheckScreen(); bindCoinCheckEvents(); }
+  else if (name === "bots") view.innerHTML = renderBotsScreen();
   else if (name === "journal") { view.innerHTML = renderJournalScreen(); bindJournalEvents(); }
   else if (name === "resources") view.innerHTML = renderResourcesScreen();
   else if (name === "achievements") view.innerHTML = renderAchievementsScreen();
@@ -293,10 +241,8 @@ function renderNav(active) {
   const nav = document.getElementById("tabs");
   const items = [
     ["dashboard", "Дашборд"],
-    ["flashcards", "Флеш-карты"],
-    ["scenarios", "Сценарии"],
-    ["coincheck", "Проверка монеты"],
     ["journal", "Дневник"],
+    ["bots", "Боты"],
     ["resources", "Ресурсы"],
     ["achievements", "Достижения"]
   ];
@@ -312,7 +258,8 @@ function updateNavStatus() {
   if (!el) return;
   const completedCount = BLOCKS.filter(b => Store.isBlockComplete(b)).length;
   const currentBlock = BLOCKS.find(b => !Store.isBlockComplete(b)) || BLOCKS[BLOCKS.length - 1];
-  el.innerHTML = `<span class="live-dot"></span>Блок ${currentBlock.id} · ${completedCount}/${BLOCKS.length}`;
+  const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  el.innerHTML = `<span class="live-dot"></span>Блок ${currentBlock.id} · ${completedCount}/${BLOCKS.length} · ${time}`;
 }
 
 /* =========================================================================
@@ -357,7 +304,7 @@ function renderDashboard() {
 
   return `
     <div class="hero">
-      <span class="eyebrow">Протокол v3 · ${BLOCKS.length} блоков</span>
+      <span class="eyebrow">Протокол v4 · ${BLOCKS.length} блоков</span>
       <h1 class="headline-2tone"><span class="l1">Дорожная</span><span class="l2">карта</span></h1>
       <p class="subhead">${BLOCKS.length} блоков — от основ блокчейна до трейдинга и мемкоин-спекуляций. Блок закрывается только когда чек-лист выполнен целиком и квиз пройден на 80%+.</p>
       <div class="rule-note">${esc(PROGRAM_META.rule)}</div>
@@ -394,7 +341,11 @@ function renderDashboard() {
 function bindDashboardEvents() {
   const view = document.getElementById("view");
   on(view, ".stamp-node", "click", (e) => navigate(`block/${e.currentTarget.dataset.block}`));
-  on(view, "input[data-idx]", "change", (e) => { Store.toggleStanding(parseInt(e.currentTarget.dataset.idx, 10)); render(); });
+  on(view, "input[data-idx]", "change", (e) => {
+    Store.toggleStanding(parseInt(e.currentTarget.dataset.idx, 10));
+    checkStandingAchievements();
+    render();
+  });
 }
 
 /* =========================================================================
@@ -540,281 +491,22 @@ function bindBlockEvents(id) {
 }
 
 /* =========================================================================
-   Flashcards
+   Bots — live embed of the separate bitget_bot paper-trading dashboard.
+   Deliberately not a static copy: that dashboard rebuilds daily from live
+   paper-trading state, so embedding the real page is the only way this
+   doesn't go stale the moment it's added.
    ========================================================================= */
-let flashSession = null; // { queue: [ids], pos, mode, showBack, wrongCount, totalCards }
-
-function initFlashSession(mode) {
-  const ids = mode === "all" ? FLASHCARDS.map(c => c.id) : Store.dueFlashcards().map(c => c.id);
-  flashSession = { queue: shuffle(ids), pos: 0, mode, showBack: false, wrongCount: 0, totalCards: ids.length };
-}
-
-function renderFlashcardsScreen() {
-  if (!flashSession) initFlashSession("due");
-  const dueCount = Store.dueFlashcards().length;
-
-  if (!flashSession.queue.length) {
-    return `
-      <div class="card">
-        <span class="eyebrow">Spaced repetition</span>
-        <h2>Флеш-карты</h2>
-        <p>Карточек к повторению сейчас нет (0 due из ${FLASHCARDS.length}).</p>
-        <div class="btn-row">
-          <button class="btn primary" id="start-all">Пройти всю колоду (тренировка)</button>
-        </div>
-      </div>`;
-  }
-
-  const cardId = flashSession.queue[flashSession.pos];
-  const card = FLASHCARDS.find(c => c.id === cardId);
-  const cState = Store.getFlashcard(cardId);
-  const dots = [1, 2, 3, 4, 5].map(n => `<span class="box-dot ${n === cState.box ? "active" : ""}">${n}</span>`).join("");
-
+function renderBotsScreen() {
   return `
-    <div class="card">
-      <span class="eyebrow">Spaced repetition</span>
-      <h2>Флеш-карты <span class="pill">${flashSession.mode === "all" ? "вся колода" : "к повторению"}</span></h2>
-      <p class="faint">Карта ${flashSession.pos + 1} из ${flashSession.queue.length} · всего в колоде ${FLASHCARDS.length} · due сейчас: ${dueCount}</p>
-      <div class="flash-stage">
-        <div class="flashcard" id="flash-card">
-          <span class="side-tag">${flashSession.showBack ? "Ответ" : "Вопрос — нажми, чтобы открыть ответ"}</span>
-          <div class="content ${flashSession.showBack ? "back" : ""}">${esc(flashSession.showBack ? card.back : card.front)}</div>
-        </div>
-        <div class="box-track">Box: ${dots}</div>
-        ${!flashSession.showBack
-      ? `<div class="btn-row"><button class="btn primary" id="reveal">Показать ответ</button></div>`
-      : `<div class="btn-row">
-              <button class="btn danger" id="mark-wrong">Не помню</button>
-              <button class="btn primary" id="mark-right">Помню</button>
-             </div>`}
-      </div>
+    <div class="hero" style="padding-top:32px;padding-bottom:32px">
+      <span class="eyebrow">Живые боты · paper trading</span>
+      <h1 class="headline-2tone"><span class="l1">Крипто</span><span class="l2">Полигон</span></h1>
+      <p class="subhead">Трендовый и mean-reversion боты на реальных ценах Bitget, без единой реальной сделки. Это тот же живой дашборд, что на <a href="https://mkovalenko008.github.io/cripto/" target="_blank" rel="noopener noreferrer">mkovalenko008.github.io/cripto</a> — обновляется там же, здесь просто окно в него.</p>
     </div>
-    <div class="card">
-      <button class="btn ghost" id="restart-due">Начать заново: к повторению</button>
-      <button class="btn ghost" id="restart-all">Начать заново: вся колода</button>
+    <div class="card" style="padding:0;overflow:hidden">
+      <iframe src="https://mkovalenko008.github.io/cripto/" class="bot-frame" title="Крипто Полигон — live paper trading" loading="lazy"></iframe>
     </div>
   `;
-}
-
-function bindFlashcardsEvents() {
-  const view = document.getElementById("view");
-  const startAll = view.querySelector("#start-all");
-  if (startAll) startAll.addEventListener("click", () => { initFlashSession("all"); render(); });
-
-  const flashCard = view.querySelector("#flash-card");
-  const reveal = view.querySelector("#reveal");
-  if (flashCard) flashCard.addEventListener("click", () => { flashSession.showBack = true; render(); });
-  if (reveal) reveal.addEventListener("click", (e) => { e.stopPropagation(); flashSession.showBack = true; render(); });
-
-  const advance = (correct) => {
-    const cardId = flashSession.queue[flashSession.pos];
-    Store.reviewFlashcard(cardId, correct);
-    if (!correct) {
-      flashSession.wrongCount++;
-      flashSession.queue.push(cardId); // requeue to see again this session
-    }
-    flashSession.pos++;
-    flashSession.showBack = false;
-    if (flashSession.pos >= flashSession.queue.length) {
-      if (flashSession.mode === "all" && flashSession.wrongCount === 0 && flashSession.totalCards === FLASHCARDS.length) {
-        Store.unlockAchievement("flashcards-clean");
-      }
-      flashSession = null;
-    }
-    render();
-  };
-
-  const wrongBtn = view.querySelector("#mark-wrong");
-  const rightBtn = view.querySelector("#mark-right");
-  if (wrongBtn) wrongBtn.addEventListener("click", () => advance(false));
-  if (rightBtn) rightBtn.addEventListener("click", () => advance(true));
-
-  const rDue = view.querySelector("#restart-due");
-  const rAll = view.querySelector("#restart-all");
-  if (rDue) rDue.addEventListener("click", () => { initFlashSession("due"); render(); });
-  if (rAll) rAll.addEventListener("click", () => { initFlashSession("all"); render(); });
-}
-
-/* =========================================================================
-   Applied scenarios
-   ========================================================================= */
-function renderScenariosScreen() {
-  const cards = SCENARIOS.map(s => {
-    const state = Store.getScenario(s.id);
-    const blockTitle = BLOCKS.find(b => b.id === s.blockId).title;
-    let body = `
-      <div class="scenario-prompt">${esc(s.prompt)}</div>
-      <p><strong>Задача:</strong> ${esc(s.task)}</p>`;
-
-    if (s.type === "numeric") {
-      body += `
-        <div class="form-grid">
-          <div>
-            <label class="field-label">Твой ответ ${s.unit ? `(${esc(s.unit)})` : ""}</label>
-            <input type="text" inputmode="decimal" id="ans-${s.id}" placeholder="например: -20.0"/>
-          </div>
-        </div>
-        <div class="btn-row">
-          <button class="btn primary" data-check="${s.id}">Проверить</button>
-          <button class="btn ghost" data-reveal="${s.id}">Показать разбор</button>
-        </div>
-        <div id="result-${s.id}"></div>`;
-    } else {
-      body += `
-        <textarea id="ans-${s.id}" placeholder="Запиши свой разбор здесь...">${esc(state.userAnswer)}</textarea>
-        <div class="btn-row">
-          <button class="btn ghost" data-reveal="${s.id}">Показать разбор</button>
-          <button class="btn primary" data-done="${s.id}">${state.done ? "Разобрано ✓" : "Отметить как разобрано"}</button>
-        </div>`;
-    }
-    body += `<div class="model-answer" id="model-${s.id}" hidden>${esc(s.modelAnswer)}</div>`;
-
-    return `<div class="card">
-      <h3>${esc(blockTitle)} <span class="pill">${state.done ? "разобрано" : "не разобрано"}</span></h3>
-      ${body}
-    </div>`;
-  }).join("");
-
-  return `<div class="card"><span class="eyebrow">Практика</span><h2>Applied-сценарии</h2><p class="faint">Не пересказ определения, а применение чек-листа или формулы к конкретному случаю.</p></div>${cards}`;
-}
-
-function bindScenariosEvents() {
-  const view = document.getElementById("view");
-  on(view, "[data-reveal]", "click", (e) => {
-    const id = e.currentTarget.dataset.reveal;
-    view.querySelector(`#model-${id}`).hidden = false;
-  });
-  on(view, "textarea", "input", (e) => {
-    const id = e.currentTarget.id.replace("ans-", "");
-    Store.setScenarioAnswer(id, e.currentTarget.value);
-  });
-  on(view, "[data-done]", "click", (e) => {
-    const id = e.currentTarget.dataset.done;
-    const s = Store.getScenario(id);
-    Store.markScenarioDone(id, !s.done);
-    checkScenarioAchievements();
-    render();
-  });
-  on(view, "[data-check]", "click", (e) => {
-    const id = e.currentTarget.dataset.check;
-    const scenario = SCENARIOS.find(s => s.id === id);
-    const input = view.querySelector(`#ans-${id}`);
-    const val = parseFloat((input.value || "").replace(",", "."));
-    const correctVal = typeof scenario.computeInput !== "undefined" ? scenario.compute(scenario.computeInput) : scenario.compute();
-    const resultEl = view.querySelector(`#result-${id}`);
-    const ok = !isNaN(val) && Math.abs(val - correctVal) <= scenario.tolerance;
-    resultEl.innerHTML = `<p class="result-tag ${ok ? "ok" : "no"}">${ok ? "✓ Верно" : `✗ Неверно — правильный ответ: ${correctVal}${scenario.unit || ""}`}</p>`;
-    if (ok) {
-      Store.markScenarioDone(id, true);
-      checkScenarioAchievements();
-    }
-  });
-}
-
-/* =========================================================================
-   Coin check — reusable due-diligence checklist (Block 2 / Block 4 criteria)
-   No AI, no backend: a rule-based read of the numbers you enter, saved
-   locally so you can revisit past checks. This is a filter, not a verdict —
-   the wording below deliberately avoids "safe to buy" framing.
-   ========================================================================= */
-function computeCoinFlags(e) {
-  const flags = [];
-  const num = (v) => (v === "" || v === null || v === undefined ? null : parseFloat(v));
-  const fdv = num(e.fdv), mcap = num(e.marketCap);
-  if (fdv !== null && mcap !== null && mcap > 0) {
-    const ratio = fdv / mcap;
-    if (ratio >= 3) flags.push({ sev: "danger", text: `FDV/Market Cap = ${ratio.toFixed(1)}x — большой разрыв, скрытая будущая инфляция предложения (Блок 2)` });
-    else if (ratio >= 1.5) flags.push({ sev: "warning", text: `FDV/Market Cap = ${ratio.toFixed(1)}x — разрыв заметен, стоит понимать график анлоков` });
-  }
-  const teamPct = num(e.teamPct), cliff = num(e.cliffMonths);
-  if (teamPct !== null) {
-    if (teamPct >= 30 && cliff !== null && cliff <= 3) flags.push({ sev: "danger", text: `${teamPct}% у команды/фонда, крупный анлок через ${cliff} мес. — ожидаемое давление на продажу (Блок 2)` });
-    else if (teamPct >= 40) flags.push({ sev: "warning", text: `${teamPct}% у команды/фонда/инвесторов — высокая концентрация, проверь график вестинга` });
-  }
-  const top10 = num(e.top10Pct);
-  if (top10 !== null) {
-    if (top10 >= 50) flags.push({ sev: "danger", text: `Топ-10 кошельков держат ${top10}% саплая — высокий риск манипуляции ценой (Блок 2)` });
-    else if (top10 >= 30) flags.push({ sev: "warning", text: `Топ-10 кошельков держат ${top10}% саплая — концентрация выше среднего` });
-  }
-  if (e.hasAudit === "no") flags.push({ sev: "danger", text: "Нет открытого аудита — технический due diligence не пройден (Блок 2)" });
-  else if (e.hasAudit === "unknown") flags.push({ sev: "warning", text: "Аудит не проверен — обязательно проверить перед вложением" });
-  if (e.githubActive === "no") flags.push({ sev: "warning", text: "GitHub неактивен — возможно заброшенный репозиторий (Блок 2)" });
-  if (e.scamFlags === "yes") flags.push({ sev: "danger", text: "RugCheck/TokenSniffer нашли скам-признаки (honeypot/mint-права) — не входить (Блок 2)" });
-  if (e.liquidityLocked === "no") flags.push({ sev: "danger", text: "Ликвидность не залочена — классический риск rug pull (Блок 2)" });
-  const apy = num(e.apy);
-  if (apy !== null && apy > 20) flags.push({ sev: "danger", text: `Заявленный APY ${apy}% выше рыночного — красный флаг по APY, проверить механику (Блок 4/5)` });
-  return flags;
-}
-
-function renderCoinCheckScreen() {
-  const checks = Store.raw.coinChecks;
-  const rows = checks.map(c => {
-    const flags = computeCoinFlags(c);
-    const dangerCount = flags.filter(f => f.sev === "danger").length;
-    const verdict = dangerCount > 0 ? `${dangerCount} красных флаг(ов)` : (flags.length ? "есть вопросы без ответа" : "явных флагов нет");
-    return `<div class="card">
-      <span class="eyebrow">${esc(c.date)}</span>
-      <h3>${esc(c.name)} <span class="pill" style="${dangerCount ? "border-color:var(--color-ember-border);color:var(--color-ember-glow)" : (flags.length ? "" : "border-color:rgba(52,211,153,0.4);color:var(--color-signal-green)")}">${verdict}</span></h3>
-      ${flags.length ? flags.map(f => `<div class="propfirm-flag breach"><span class="dot"></span>${f.sev === "danger" ? "✗" : "?"} ${esc(f.text)}</div>`).join("")
-      : `<div class="propfirm-flag ok"><span class="dot"></span>Явных красных флагов по введённым данным нет</div>`}
-      ${c.note ? `<p class="faint" style="margin-top:10px">Заметка: ${esc(c.note)}</p>` : ""}
-      <div class="btn-row"><button class="btn btn-danger" data-del-check="${c.id}">Удалить</button></div>
-    </div>`;
-  }).join("");
-
-  return `
-    <div class="card">
-      <span class="eyebrow">Чек-лист Блока 2</span>
-      <h2>Проверка монеты</h2>
-      <p class="faint">Введи то, что удалось найти по монете — приложение подсветит несоответствия критериям Блока 2 (и APY-флаг из Блока 4). Это фильтр по твоим же данным, а не гарантия и не вердикт «покупай/не покупай» — отсутствие флагов не отменяет риск-менеджмент Блока 3.</p>
-      <form id="coincheck-form" class="form-grid">
-        <div><label class="field-label">Название/тикер</label><input type="text" name="name" required/></div>
-        <div><label class="field-label">Дата</label><input type="date" name="date" value="${todayISO()}" required/></div>
-        <div><label class="field-label">FDV, $</label><input type="number" step="any" name="fdv" placeholder="напр. 2000000000"/></div>
-        <div><label class="field-label">Market cap (обращающийся), $</label><input type="number" step="any" name="marketCap"/></div>
-        <div><label class="field-label">% у команды/фонда/инвесторов</label><input type="number" step="any" name="teamPct"/></div>
-        <div><label class="field-label">Ближайший крупный анлок, мес.</label><input type="number" step="any" name="cliffMonths"/></div>
-        <div><label class="field-label">% саплая у топ-10 кошельков</label><input type="number" step="any" name="top10Pct"/></div>
-        <div><label class="field-label">Заявленный APY, % (0 если нет)</label><input type="number" step="any" name="apy"/></div>
-        <div><label class="field-label">Открытый аудит от известной фирмы?</label>
-          <select name="hasAudit"><option value="unknown">Не проверял(а)</option><option value="yes">Да</option><option value="no">Нет</option></select>
-        </div>
-        <div><label class="field-label">GitHub активен?</label>
-          <select name="githubActive"><option value="unknown">Не проверял(а)</option><option value="yes">Да</option><option value="no">Нет</option></select>
-        </div>
-        <div><label class="field-label">RugCheck/TokenSniffer нашли скам-флаги?</label>
-          <select name="scamFlags"><option value="unknown">Не проверял(а)</option><option value="no">Нет</option><option value="yes">Да</option></select>
-        </div>
-        <div><label class="field-label">Ликвидность залочена?</label>
-          <select name="liquidityLocked"><option value="unknown">Не проверял(а)</option><option value="yes">Да</option><option value="no">Нет</option></select>
-        </div>
-        <div class="full"><label class="field-label">Заметка / тезис</label><textarea name="note"></textarea></div>
-        <div class="full btn-row"><button type="submit" class="btn">Проверить и сохранить</button></div>
-      </form>
-      <div id="coincheck-preview"></div>
-    </div>
-    ${rows || `<div class="card faint">Пока нет сохранённых проверок.</div>`}
-  `;
-}
-
-function bindCoinCheckEvents() {
-  const view = document.getElementById("view");
-  const form = view.querySelector("#coincheck-form");
-  form.addEventListener("submit", (e) => {
-    e.preventDefault();
-    const fd = new FormData(form);
-    const entry = { id: uid() };
-    ["name", "date", "fdv", "marketCap", "teamPct", "cliffMonths", "top10Pct", "apy", "hasAudit", "githubActive", "scamFlags", "liquidityLocked", "note"].forEach(k => {
-      entry[k] = fd.get(k);
-    });
-    Store.addCoinCheck(entry);
-    checkCoinCheckAchievements();
-    render();
-  });
-  on(view, "[data-del-check]", "click", (e) => {
-    Store.deleteCoinCheck(e.currentTarget.dataset.delCheck);
-    render();
-  });
 }
 
 /* =========================================================================
@@ -862,21 +554,10 @@ function renderEquityCurve(withR) {
   <p class="faint">Кумулятивный R по ${points.length} сделкам с посчитанным результатом. Итого: ${cum.toFixed(2)}R</p>`;
 }
 
-function renderPropFirmPanel(entries) {
-  const cfg = Store.raw.journal.propFirm;
-  const formHtml = `
-    <details ${cfg ? "" : "open"}>
-      <summary class="faint" style="cursor:pointer">${cfg ? "Настройки режима «проп-фирма»" : "Включить режим «проп-фирма»"}</summary>
-      <div class="form-grid" style="margin-top:10px">
-        <div><label class="field-label">Дата начала окна (30 дней)</label><input type="date" id="pf-start" value="${cfg ? cfg.start : todayISO()}"/></div>
-        <div><label class="field-label">Дневной лимит убытка, R</label><input type="number" step="0.1" id="pf-daily" value="${cfg ? cfg.dailyLossLimitR : 2}"/></div>
-        <div><label class="field-label">Общий лимит просадки, R</label><input type="number" step="0.1" id="pf-dd" value="${cfg ? cfg.maxDrawdownR : 6}"/></div>
-      </div>
-      <div class="btn-row"><button class="btn primary" id="pf-save">Сохранить настройки</button>${cfg ? `<button class="btn danger" id="pf-disable">Выключить режим</button>` : ""}</div>
-    </details>`;
-
-  if (!cfg) return `<div class="card"><h3>Режим «проп-фирма»</h3>${formHtml}</div>`;
-
+/* Shared by the panel (display) and the achievement checker, so the two
+   never disagree about what counts as a breach. */
+function computePropFirmStatus(entries, cfg) {
+  if (!cfg) return null;
   const start = new Date(cfg.start);
   const end = new Date(start); end.setDate(end.getDate() + 30);
   const inWindow = entries.filter(e => { const d = new Date(e.date); return d >= start && d <= end; })
@@ -897,15 +578,69 @@ function renderPropFirmPanel(entries) {
   });
   const fiftyPctBreaches = totalNet > 0 ? days.filter(d => byDay[d] > 0.5 * totalNet) : [];
 
+  return { start, end, byDay, days, totalNet, dailyBreaches, maxDD, ddBreachDay, fiftyPctBreaches };
+}
+
+function renderDailyRChart(byDay, dailyLossLimitR) {
+  const days = Object.keys(byDay).sort();
+  if (!days.length) return "";
+  const w = 600, h = 140, pad = 10;
+  const vals = days.map(d => byDay[d]);
+  const maxAbs = Math.max(Math.abs(dailyLossLimitR) || 0, ...vals.map(v => Math.abs(v)), 0.5);
+  const gap = (w - 2 * pad) / days.length;
+  const barW = gap * 0.7;
+  const zeroY = h / 2;
+  const scale = (h / 2 - pad) / maxAbs;
+  const bars = days.map((d, i) => {
+    const v = byDay[d];
+    const x = pad + i * gap + (gap - barW) / 2;
+    const barH = Math.abs(v) * scale;
+    const y = v >= 0 ? zeroY - barH : zeroY;
+    const breach = v < -Math.abs(dailyLossLimitR);
+    const color = breach ? "#fa3812" : (v >= 0 ? "#34d399" : "#353845");
+    return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(barH, 1).toFixed(1)}" fill="${color}"/>`;
+  }).join("");
+  const limitY = zeroY + Math.abs(dailyLossLimitR) * scale;
+  return `<svg class="equity-chart" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+    <line class="zero-line" x1="${pad}" y1="${zeroY}" x2="${w - pad}" y2="${zeroY}"/>
+    <line x1="${pad}" y1="${limitY.toFixed(1)}" x2="${w - pad}" y2="${limitY.toFixed(1)}" stroke="#651a15" stroke-width="1" stroke-dasharray="4 3"/>
+    ${bars}
+  </svg>
+  <p class="faint">Дневной R по дням окна; пунктир — дневной лимит убытка (${dailyLossLimitR}R).</p>`;
+}
+
+function renderPropFirmPanel(entries, stats) {
+  const cfg = Store.raw.journal.propFirm;
+  const suggestedDaily = stats.avgLossR > 0 ? Math.round(stats.avgLossR * 2 * 10) / 10 : 2;
+  const suggestedDD = stats.avgLossR > 0 ? Math.round(stats.avgLossR * 6 * 10) / 10 : 6;
+  const autoNote = stats.avgLossR > 0
+    ? `<p class="faint">Предложено автоматически по твоей истории (2× и 6× среднего R убытка) — можно поменять.</p>`
+    : `<p class="faint">Пока нет убыточных сделок для расчёта — стоят дефолты, можно поменять.</p>`;
+  const formHtml = `
+    <details ${cfg ? "" : "open"}>
+      <summary class="faint" style="cursor:pointer">${cfg ? "Настройки режима «проп-фирма»" : "Включить режим «проп-фирма»"}</summary>
+      ${cfg ? "" : autoNote}
+      <div class="form-grid" style="margin-top:10px">
+        <div><label class="field-label">Дата начала окна (30 дней)</label><input type="date" id="pf-start" value="${cfg ? cfg.start : todayISO()}"/></div>
+        <div><label class="field-label">Дневной лимит убытка, R</label><input type="number" step="0.1" id="pf-daily" value="${cfg ? cfg.dailyLossLimitR : suggestedDaily}"/></div>
+        <div><label class="field-label">Общий лимит просадки, R</label><input type="number" step="0.1" id="pf-dd" value="${cfg ? cfg.maxDrawdownR : suggestedDD}"/></div>
+      </div>
+      <div class="btn-row"><button class="btn primary" id="pf-save">Сохранить настройки</button>${cfg ? `<button class="btn danger" id="pf-disable">Выключить режим</button>` : ""}</div>
+    </details>`;
+
+  if (!cfg) return `<div class="card"><h3>Режим «проп-фирма»</h3>${formHtml}</div>`;
+
+  const status = computePropFirmStatus(entries, cfg);
   const flag = (ok, text) => `<div class="propfirm-flag ${ok ? "ok" : "breach"}"><span class="dot"></span>${text}</div>`;
 
   return `<div class="card">
     <span class="eyebrow">Режим «проп-фирма»</span>
-    <h3>Окно ${cfg.start} → ${end.toISOString().slice(0, 10)}</h3>
-    ${flag(dailyBreaches.length === 0, `Дневной лимит убытка (${cfg.dailyLossLimitR}R): ${dailyBreaches.length ? "нарушен в дни " + dailyBreaches.join(", ") : "не нарушен"}`)}
-    ${flag(!ddBreachDay, `Общий лимит просадки (${cfg.maxDrawdownR}R): макс. просадка ${maxDD.toFixed(2)}R${ddBreachDay ? " — превышена к " + ddBreachDay : ""}`)}
-    ${flag(fiftyPctBreaches.length === 0, `Правило «не больше 50% прибыли за один день»: ${fiftyPctBreaches.length ? "нарушено в дни " + fiftyPctBreaches.join(", ") : (totalNet > 0 ? "не нарушено" : "период пока не в плюсе — правило не применимо")}`)}
-    <p class="faint">Итог по сделкам в окне: ${totalNet.toFixed(2)}R за ${days.length} торговых дней.</p>
+    <h3>Окно ${cfg.start} → ${status.end.toISOString().slice(0, 10)}</h3>
+    ${flag(status.dailyBreaches.length === 0, `Дневной лимит убытка (${cfg.dailyLossLimitR}R): ${status.dailyBreaches.length ? "нарушен в дни " + status.dailyBreaches.join(", ") : "не нарушен"}`)}
+    ${flag(!status.ddBreachDay, `Общий лимит просадки (${cfg.maxDrawdownR}R): макс. просадка ${status.maxDD.toFixed(2)}R${status.ddBreachDay ? " — превышена к " + status.ddBreachDay : ""}`)}
+    ${flag(status.fiftyPctBreaches.length === 0, `Правило «не больше 50% прибыли за один день»: ${status.fiftyPctBreaches.length ? "нарушено в дни " + status.fiftyPctBreaches.join(", ") : (status.totalNet > 0 ? "не нарушено" : "период пока не в плюсе — правило не применимо")}`)}
+    <p class="faint">Итог по сделкам в окне: ${status.totalNet.toFixed(2)}R за ${status.days.length} торговых дней.</p>
+    ${renderDailyRChart(status.byDay, cfg.dailyLossLimitR)}
     ${formHtml}
   </div>`;
 }
@@ -938,9 +673,10 @@ function renderJournalScreen() {
         <div><label class="field-label">Направление</label>
           <select name="direction"><option value="long">Long</option><option value="short">Short</option></select>
         </div>
-        <div><label class="field-label">Размер позиции, % портфеля</label><input type="number" step="0.1" name="positionSizePct" required/></div>
+        <div><label class="field-label">Размер позиции</label><input type="number" step="0.1" name="positionSizePct" required/></div>
         <div><label class="field-label">Цена входа (опц.)</label><input type="number" step="any" name="entryPrice"/></div>
-        <div><label class="field-label">Цена стопа (опц.)</label><input type="number" step="any" name="stopPrice"/></div>
+        <div><label class="field-label">Цена стопа, SL (опц.)</label><input type="number" step="any" name="stopPrice"/></div>
+        <div><label class="field-label">Тейк-профит, PL (опц.)</label><input type="number" step="any" name="takeProfitPrice"/></div>
         <div><label class="field-label">Факт. цена выхода (опц.)</label><input type="number" step="any" name="exitPrice"/></div>
         <div><label class="field-label">R вручную (если цены не даны)</label><input type="number" step="any" name="manualR"/></div>
         <div class="full"><label class="field-label">Тезис входа (1 предложение)</label><input type="text" name="thesis" required/></div>
@@ -964,7 +700,7 @@ function renderJournalScreen() {
       ${renderEquityCurve(stats.withR)}
     </div>
 
-    ${renderPropFirmPanel(entries)}
+    ${renderPropFirmPanel(entries, stats)}
 
     <div class="card">
       <span class="eyebrow">Журнал</span>
@@ -993,6 +729,7 @@ function bindJournalEvents() {
       positionSizePct: parseFloat(fd.get("positionSizePct")) || 0,
       entryPrice: fd.get("entryPrice") || "",
       stopPrice: fd.get("stopPrice") || "",
+      takeProfitPrice: fd.get("takeProfitPrice") || "",
       exitPrice: fd.get("exitPrice") || "",
       manualR: fd.get("manualR") || "",
       thesis: fd.get("thesis").trim(),
@@ -1001,6 +738,7 @@ function bindJournalEvents() {
     };
     Store.addJournalEntry(entry);
     checkJournalAchievements();
+    checkPropFirmAchievements();
     render();
   });
 
@@ -1015,6 +753,7 @@ function bindJournalEvents() {
     const dailyLossLimitR = parseFloat(view.querySelector("#pf-daily").value) || 2;
     const maxDrawdownR = parseFloat(view.querySelector("#pf-dd").value) || 6;
     Store.setPropFirm({ start, dailyLossLimitR, maxDrawdownR });
+    checkPropFirmAchievements();
     render();
   });
   const pfDisable = view.querySelector("#pf-disable");
@@ -1054,4 +793,5 @@ window.addEventListener("hashchange", render);
 window.addEventListener("DOMContentLoaded", () => {
   Store.load();
   render();
+  setInterval(updateNavStatus, 30000);
 });

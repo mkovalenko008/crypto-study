@@ -418,6 +418,8 @@ table.journal-table td.wrap { white-space: normal; min-width: 160px; }
 .link-chips { display: flex; flex-wrap: wrap; gap: 10px; }
 .link-chips .btn { text-decoration: none; }
 
+.bot-frame { width: 100%; height: 1800px; border: 0; display: block; background: var(--color-abyss-ink); }
+
 /* ===== Achievements ===== */
 .badge-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 16px; }
 .badge { border: 1px solid var(--border-hair); border-radius: var(--radius-cards); padding: 20px 16px; text-align: center; opacity: 0.4; }
