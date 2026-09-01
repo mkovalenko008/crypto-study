@@ -182,8 +182,8 @@ const Store = (() => {
 const ACHIEVEMENTS = [
   { id: "journal-first", glyph: "✎", name: "Первая запись", desc: "Первая сделка в торговом дневнике" },
   { id: "first-block", glyph: "⚑", name: "Первый блок", desc: "Закрыт первый блок программы" },
-  { id: "five-blocks", glyph: "⚔", name: "Экватор", desc: "Закрыто 5 блоков из 11" },
-  { id: "all-blocks", glyph: "★", name: "Протокол закрыт", desc: "Пройдены все 11 блоков программы" },
+  { id: "five-blocks", glyph: "⚔", name: "Экватор", desc: "Закрыто 5 блоков" },
+  { id: "all-blocks", glyph: "★", name: "Протокол закрыт", desc: "Пройдены все блоки программы" },
   { id: "quiz-perfect", glyph: "✓", name: "С первой попытки", desc: "Квиз на 100% с первой попытки" },
   { id: "flashcards-clean", glyph: "◈", name: "Чистая колода", desc: "Вся колода флеш-карт без ошибок за сессию" },
   { id: "journal-streak-7", glyph: "◯", name: "Неделя дисциплины", desc: "7 дней подряд с записью в дневник" },
@@ -195,7 +195,7 @@ function checkBlockAchievements() {
   const completed = BLOCKS.filter(b => Store.isBlockComplete(b)).length;
   if (completed >= 1) Store.unlockAchievement("first-block");
   if (completed >= 5) Store.unlockAchievement("five-blocks");
-  if (completed >= 11) Store.unlockAchievement("all-blocks");
+  if (completed >= BLOCKS.length) Store.unlockAchievement("all-blocks");
 }
 
 function checkScenarioAchievements() {
@@ -336,9 +336,9 @@ function renderDashboard() {
 
   return `
     <div class="hero">
-      <span class="eyebrow">Протокол v3 · 12–13 недель</span>
+      <span class="eyebrow">Протокол v3 · ${BLOCKS.length} блоков</span>
       <h1 class="headline-2tone"><span class="l1">Дорожная</span><span class="l2">карта</span></h1>
-      <p class="subhead">11 блоков от матчасти до продвинутого DeFi. Блок закрывается только когда чек-лист выполнен целиком и квиз пройден на 80%+.</p>
+      <p class="subhead">${BLOCKS.length} блоков от матчасти до поиска прибыльных монет. Блок закрывается только когда чек-лист выполнен целиком и квиз пройден на 80%+.</p>
       <div class="rule-note">${esc(PROGRAM_META.rule)}</div>
     </div>
 
@@ -354,7 +354,7 @@ function renderDashboard() {
 
     <div class="card">
       <span class="eyebrow">Таймлайн</span>
-      <h3>12–13 недель</h3>
+      <h3>Недели прохождения</h3>
       <table class="journal-table" style="min-width:0">
         <thead><tr><th>Неделя</th><th>Блок(и)</th></tr></thead>
         <tbody>${timelineRows}</tbody>
