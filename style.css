@@ -198,11 +198,14 @@ main#view { min-height: 60vh; padding-top: 40px; }
 .field-label {
   font-size: var(--text-caption);
   text-transform: uppercase;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.06em;
   color: var(--color-slate-mist);
   font-weight: 500;
   display: block;
   margin-bottom: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ===== Buttons — ghost pills only, no filled color ===== */
@@ -342,7 +345,7 @@ main#view { min-height: 60vh; padding-top: 40px; }
 .gate-status.pass { border-color: rgba(52, 211, 153, 0.4); color: var(--color-signal-green); }
 
 /* ===== Forms ===== */
-.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px 20px; }
+.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px 20px; }
 .form-grid .full { grid-column: 1 / -1; }
 input[type="text"], input[type="number"], input[type="date"], select, textarea {
   width: 100%;
@@ -418,7 +421,8 @@ table.journal-table td.wrap { white-space: normal; min-width: 160px; }
 .link-chips { display: flex; flex-wrap: wrap; gap: 10px; }
 .link-chips .btn { text-decoration: none; }
 
-.bot-frame { width: 100%; height: 1800px; border: 0; display: block; background: var(--color-abyss-ink); }
+.bot-open { color: var(--color-ember-glow); font-weight: 500; }
+.bot-generated { text-align: center; margin-bottom: var(--spacing-24); }
 
 /* ===== Achievements ===== */
 .badge-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 16px; }

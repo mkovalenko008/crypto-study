@@ -146,7 +146,12 @@ const ACHIEVEMENTS = [
   { id: "standing-complete", glyph: "◆", name: "Протокол безопасности", desc: "Отмечены все пункты постоянного чек-листа безопасности" },
   { id: "journal-10-trades", glyph: "▦", name: "Десять сделок", desc: "10 записей в торговом дневнике" },
   { id: "journal-positive-expectancy", glyph: "▲", name: "Положительное мат. ожидание", desc: "Expectancy выше нуля при 10+ сделках с посчитанным R" },
-  { id: "propfirm-clean", glyph: "⛨", name: "Дисциплина проп-фирмы", desc: "Все правила режима «проп-фирма» соблюдены за окно" }
+  { id: "propfirm-clean", glyph: "⛨", name: "Дисциплина проп-фирмы", desc: "Все правила режима «проп-фирма» соблюдены за окно" },
+  { id: "propfirm-enabled", glyph: "▣", name: "Включил дисциплину", desc: "Настроен режим «проп-фирма» хотя бы раз" },
+  { id: "bots-viewed", glyph: "◐", name: "Живой полигон", desc: "Открыта вкладка «Боты» хотя бы раз" },
+  { id: "big-winner", glyph: "⬆", name: "Крупный выигрыш", desc: "Зафиксирована сделка с результатом от 5R" },
+  { id: "journal-50-trades", glyph: "▩", name: "Полтинник", desc: "50 записей в торговом дневнике" },
+  { id: "standing-half", glyph: "◔", name: "На полпути", desc: "Отмечено 5 из 9 пунктов постоянного чек-листа" }
 ];
 
 function checkBlockAchievements() {
@@ -158,8 +163,9 @@ function checkBlockAchievements() {
 
 function checkStandingAchievements() {
   const standing = Store.raw.standing;
-  const all = PROGRAM_META.standingChecklist.every((_, i) => !!standing[i]);
-  if (all) Store.unlockAchievement("standing-complete");
+  const checkedCount = PROGRAM_META.standingChecklist.filter((_, i) => !!standing[i]).length;
+  if (checkedCount >= 5) Store.unlockAchievement("standing-half");
+  if (checkedCount >= PROGRAM_META.standingChecklist.length) Store.unlockAchievement("standing-complete");
 }
 
 function currentJournalStreak() {
@@ -183,11 +189,13 @@ function checkJournalAchievements() {
   const entries = Store.raw.journal.entries;
   if (entries.length >= 1) Store.unlockAchievement("journal-first");
   if (entries.length >= 10) Store.unlockAchievement("journal-10-trades");
+  if (entries.length >= 50) Store.unlockAchievement("journal-50-trades");
   const streak = currentJournalStreak();
   if (streak >= 7) Store.unlockAchievement("journal-streak-7");
   if (streak >= 30) Store.unlockAchievement("journal-streak-30");
   const stats = journalStats(entries);
   if (stats.withRCount >= 10 && stats.expectancy > 0) Store.unlockAchievement("journal-positive-expectancy");
+  if (stats.withR.some(e => e.r >= 5)) Store.unlockAchievement("big-winner");
 }
 
 function checkPropFirmAchievements() {
@@ -228,7 +236,7 @@ function render() {
   const view = document.getElementById("view");
   if (name === "dashboard") view.innerHTML = renderDashboard();
   else if (name === "block") { view.innerHTML = renderBlockScreen(parseInt(arg, 10)); bindBlockEvents(parseInt(arg, 10)); }
-  else if (name === "bots") view.innerHTML = renderBotsScreen();
+  else if (name === "bots") { view.innerHTML = renderBotsScreen(); loadBotsData(); }
   else if (name === "journal") { view.innerHTML = renderJournalScreen(); bindJournalEvents(); }
   else if (name === "resources") view.innerHTML = renderResourcesScreen();
   else if (name === "achievements") view.innerHTML = renderAchievementsScreen();
@@ -491,21 +499,125 @@ function bindBlockEvents(id) {
 }
 
 /* =========================================================================
-   Bots — live embed of the separate bitget_bot paper-trading dashboard.
-   Deliberately not a static copy: that dashboard rebuilds daily from live
-   paper-trading state, so embedding the real page is the only way this
-   doesn't go stale the moment it's added.
+   Bots — native render of the separate bitget_bot paper-trading dashboard.
+   Both sites live at the same origin (mkovalenko008.github.io), so this is
+   a same-origin fetch, not a cross-origin one: no CORS, no backend needed.
+   The source page bakes its full state into a `const DATA = {...}` blob
+   inside its one inline <script> — we fetch that HTML, pull DATA out with
+   a regex, and recompute the same numbers ourselves so they render with
+   this app's own components instead of an iframe.
    ========================================================================= */
+const BOTS_SOURCE_URL = "https://mkovalenko008.github.io/cripto/";
+
+function computeBotSummary(bot) {
+  let startTotal = 0, balTotal = 0, tradeCount = 0, openCount = 0, coinCount = 0;
+  const allTrades = [];
+  const perCoin = [];
+  for (const [sym, c] of Object.entries(bot.coins)) {
+    coinCount++;
+    startTotal += c.starting_capital;
+    balTotal += c.balance;
+    tradeCount += c.trades.length;
+    if (c.position) openCount++;
+    c.trades.forEach(t => allTrades.push({ exit_time: t.exit_time, pnl_usdt: t.pnl_usdt }));
+    const pct = c.starting_capital ? ((c.balance - c.starting_capital) / c.starting_capital * 100) : 0;
+    perCoin.push({ sym: sym.replace("USDT", ""), pct, trades: c.trades.length, position: c.position });
+  }
+  allTrades.sort((a, b) => a.exit_time.localeCompare(b.exit_time));
+  let cum = startTotal;
+  const curve = [cum];
+  allTrades.forEach(t => { cum += t.pnl_usdt; curve.push(cum); });
+  perCoin.sort((a, b) => b.pct - a.pct);
+  const resultUsdt = balTotal - startTotal;
+  const resultPct = startTotal ? (resultUsdt / startTotal * 100) : 0;
+  return { startTotal, balTotal, tradeCount, openCount, coinCount, curve, perCoin, resultUsdt, resultPct };
+}
+
+function renderLineChart(points) {
+  if (points.length < 2) return `<p class="faint">Недостаточно точек для графика.</p>`;
+  const w = 600, h = 160, pad = 10;
+  const minV = Math.min(...points), maxV = Math.max(...points);
+  const range = (maxV - minV) || 1;
+  const stepX = (w - 2 * pad) / (points.length - 1);
+  const toY = (v) => h - pad - ((v - minV) / range) * (h - 2 * pad);
+  const startY = toY(points[0]);
+  const path = points.map((v, i) => `${i === 0 ? "M" : "L"} ${pad + i * stepX} ${toY(v)}`).join(" ");
+  return `<svg class="equity-chart" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+    <line class="zero-line" x1="${pad}" y1="${startY}" x2="${w - pad}" y2="${startY}"/>
+    <path class="curve" d="${path}"/>
+  </svg>`;
+}
+
+function renderBotCard(bot) {
+  const s = computeBotSummary(bot);
+  const rows = s.perCoin.map(c => {
+    const resultCell = c.trades
+      ? `<span class="${c.pct >= 0 ? "r-pos" : "r-neg"}">${c.pct >= 0 ? "+" : ""}${c.pct.toFixed(2)}%</span>`
+      : (c.position ? `<span class="faint">в позиции</span>` : `<span class="faint">нет сделок</span>`);
+    const posCell = c.position ? `<span class="bot-open">${c.position.side} вход ${c.position.entry_price}</span>` : "—";
+    return `<tr>
+      <td>${esc(c.sym)}</td>
+      <td>${resultCell}</td>
+      <td>${c.trades} сделок</td>
+      <td>${posCell}</td>
+    </tr>`;
+  }).join("");
+
+  return `
+    <div class="card">
+      <div class="btn-row" style="justify-content:space-between;margin-top:0">
+        <div>
+          <h3 style="margin-bottom:4px">${esc(bot.label)}</h3>
+          <p class="faint" style="margin:0">${esc(bot.subtitle)}</p>
+        </div>
+        <span class="gate-status ${bot.validated ? "pass" : ""}">${bot.validated ? "валидировано на train/test" : "без подтверждённого edge"}</span>
+      </div>
+      <div class="stat-grid" style="margin-top:20px">
+        <div class="stat-tile"><div class="num">${s.balTotal.toFixed(4)}</div><div class="lbl">Портфель, USDT</div></div>
+        <div class="stat-tile"><div class="num ${s.resultUsdt >= 0 ? "r-pos" : "r-neg"}">${s.resultUsdt >= 0 ? "+" : ""}${s.resultUsdt.toFixed(2)}</div><div class="lbl">${s.resultPct >= 0 ? "+" : ""}${s.resultPct.toFixed(2)}%</div></div>
+        <div class="stat-tile"><div class="num">${s.tradeCount}</div><div class="lbl">Сделок</div></div>
+        <div class="stat-tile"><div class="num">${s.openCount}/${s.coinCount}</div><div class="lbl">Открытых позиций</div></div>
+      </div>
+      ${renderLineChart(s.curve)}
+      <div class="table-wrap" style="margin-top:16px">
+        <table class="journal-table">
+          <thead><tr><th>Монета</th><th>Результат</th><th>Сделок</th><th>Открыто</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <p class="faint" style="margin-top:14px">${esc(bot.method_note)}</p>
+    </div>`;
+}
+
+async function loadBotsData() {
+  const container = document.getElementById("bots-content");
+  if (!container) return;
+  try {
+    const res = await fetch(BOTS_SOURCE_URL, { cache: "no-store" });
+    const html = await res.text();
+    const match = html.match(/const\s+DATA\s*=\s*(\{[\s\S]*?\});\s*\n/);
+    if (!match) throw new Error("DATA blob not found");
+    const data = JSON.parse(match[1]);
+    const genDate = new Date(data.generated_at).toLocaleString([], { dateStyle: "short", timeStyle: "short" });
+    container.innerHTML = `
+      <p class="faint bot-generated">Обновлено ${genDate} · данные тем же способом, что и на <a href="${BOTS_SOURCE_URL}" target="_blank" rel="noopener noreferrer">исходном дашборде ↗</a></p>
+      ${renderBotCard(data.bots.trend)}
+      ${renderBotCard(data.bots.meanrev)}
+    `;
+  } catch (err) {
+    container.innerHTML = `<div class="card faint">Не удалось загрузить живые данные ботов сейчас. <a href="${BOTS_SOURCE_URL}" target="_blank" rel="noopener noreferrer">Открыть напрямую ↗</a></div>`;
+  }
+}
+
 function renderBotsScreen() {
+  Store.unlockAchievement("bots-viewed");
   return `
     <div class="hero" style="padding-top:32px;padding-bottom:32px">
       <span class="eyebrow">Живые боты · paper trading</span>
       <h1 class="headline-2tone"><span class="l1">Крипто</span><span class="l2">Полигон</span></h1>
-      <p class="subhead">Трендовый и mean-reversion боты на реальных ценах Bitget, без единой реальной сделки. Это тот же живой дашборд, что на <a href="https://mkovalenko008.github.io/cripto/" target="_blank" rel="noopener noreferrer">mkovalenko008.github.io/cripto</a> — обновляется там же, здесь просто окно в него.</p>
+      <p class="subhead">Трендовый и mean-reversion боты на реальных ценах Bitget, без единой реальной сделки — тот же живой прогресс, что на <a href="${BOTS_SOURCE_URL}" target="_blank" rel="noopener noreferrer">mkovalenko008.github.io/cripto</a>, только отрисован здесь напрямую.</p>
     </div>
-    <div class="card" style="padding:0;overflow:hidden">
-      <iframe src="https://mkovalenko008.github.io/cripto/" class="bot-frame" title="Крипто Полигон — live paper trading" loading="lazy"></iframe>
-    </div>
+    <div id="bots-content"><p class="faint">Загружаю живые данные ботов…</p></div>
   `;
 }
 
@@ -753,6 +865,7 @@ function bindJournalEvents() {
     const dailyLossLimitR = parseFloat(view.querySelector("#pf-daily").value) || 2;
     const maxDrawdownR = parseFloat(view.querySelector("#pf-dd").value) || 6;
     Store.setPropFirm({ start, dailyLossLimitR, maxDrawdownR });
+    Store.unlockAchievement("propfirm-enabled");
     checkPropFirmAchievements();
     render();
   });
