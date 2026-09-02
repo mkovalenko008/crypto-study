@@ -34,6 +34,17 @@ const Store = (() => {
       journal: Object.assign({ entries: [], propFirm: null }, parsed.journal || {}),
       achievements: parsed.achievements || []
     };
+    // Migrate entries saved before position size became a dollar amount
+    // (it used to be "% of portfolio") so old rows don't show "undefined $".
+    let migrated = false;
+    state.journal.entries.forEach(e => {
+      if (e.positionSizeUsd === undefined && e.positionSizePct !== undefined) {
+        e.positionSizeUsd = e.positionSizePct;
+        delete e.positionSizePct;
+        migrated = true;
+      }
+    });
+    if (migrated) persist();
     return state;
   }
 
