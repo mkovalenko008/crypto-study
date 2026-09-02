@@ -661,6 +661,40 @@ function computeR(entry) {
   return (ex - e) / (e - st);
 }
 
+function computePnlUsd(entry) {
+  const { entryPrice, exitPrice, direction, positionSizeUsd } = entry;
+  if ([entryPrice, exitPrice, positionSizeUsd].some(v => v === null || v === undefined || v === "")) return null;
+  const e = parseFloat(entryPrice), ex = parseFloat(exitPrice), size = parseFloat(positionSizeUsd);
+  if (!e) return null;
+  const pctMove = direction === "short" ? (e - ex) / e : (ex - e) / e;
+  return size * pctMove;
+}
+
+function renderTradePnlChart(entries) {
+  const withPnl = entries.map(e => ({ ...e, pnl: computePnlUsd(e) })).filter(e => e.pnl !== null).sort((a, b) => a.date.localeCompare(b.date));
+  if (!withPnl.length) return `<p class="faint">Недостаточно данных для графика (нужны сделки с ценой входа, выхода и размером в $).</p>`;
+  const w = 600, h = 140, pad = 10;
+  const vals = withPnl.map(e => e.pnl);
+  const maxAbs = Math.max(...vals.map(v => Math.abs(v)), 1);
+  const gap = (w - 2 * pad) / withPnl.length;
+  const barW = Math.max(gap * 0.6, 2);
+  const zeroY = h / 2;
+  const scale = (h / 2 - pad) / maxAbs;
+  const bars = withPnl.map((e, i) => {
+    const x = pad + i * gap + (gap - barW) / 2;
+    const barH = Math.abs(e.pnl) * scale;
+    const y = e.pnl >= 0 ? zeroY - barH : zeroY;
+    const color = e.pnl >= 0 ? "#34d399" : "#fa3812";
+    return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(barH, 1).toFixed(1)}" fill="${color}"/>`;
+  }).join("");
+  const total = vals.reduce((a, b) => a + b, 0);
+  return `<svg class="equity-chart" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+    <line class="zero-line" x1="${pad}" y1="${zeroY}" x2="${w - pad}" y2="${zeroY}"/>
+    ${bars}
+  </svg>
+  <p class="faint">Результат каждой сделки в $, по датам. Итого: ${total >= 0 ? "+" : ""}${total.toFixed(2)} $</p>`;
+}
+
 function journalStats(entries) {
   const withR = entries.map(e => ({ ...e, r: computeR(e) })).filter(e => e.r !== null && !isNaN(e.r));
   const total = entries.length;
@@ -811,16 +845,20 @@ function renderJournalScreen() {
   const rows = entries.map(e => {
     const r = computeR(e);
     const rCell = r === null ? '<span class="faint">—</span>' : `<span class="${r >= 0 ? "r-pos" : "r-neg"}">${r.toFixed(2)}R</span>`;
+    const pnl = computePnlUsd(e);
+    const pnlCell = pnl === null ? '<span class="faint">—</span>' : `<span class="${pnl >= 0 ? "r-pos" : "r-neg"}">${pnl >= 0 ? "+" : ""}${pnl.toFixed(2)} $</span>`;
     return `<tr>
       <td>${esc(e.date)}</td>
       <td>${esc(e.asset)}</td>
       <td class="wrap">${esc(e.thesis)}</td>
-      <td>${e.positionSizePct}%</td>
+      <td>${e.positionSizeUsd} $</td>
+      <td>${pnlCell}</td>
       <td>${rCell}</td>
       <td class="wrap">${esc(e.deviationNote || "")}</td>
       <td><button class="btn ghost" data-del="${e.id}">Удалить</button></td>
     </tr>`;
   }).join("");
+  const totalPnl = entries.reduce((s, e) => { const p = computePnlUsd(e); return p !== null ? s + p : s; }, 0);
 
   return `
     <div class="card">
@@ -832,7 +870,7 @@ function renderJournalScreen() {
         <div><label class="field-label">Направление</label>
           <select name="direction"><option value="long">Long</option><option value="short">Short</option></select>
         </div>
-        <div><label class="field-label">Размер позиции</label><input type="number" step="0.1" name="positionSizePct" required/></div>
+        <div><label class="field-label">Размер позиции, $</label><input type="number" step="0.01" name="positionSizeUsd" required/></div>
         <div><label class="field-label">Цена входа (опц.)</label><input type="number" step="any" name="entryPrice"/></div>
         <div><label class="field-label">Цена стопа, SL (опц.)</label><input type="number" step="any" name="stopPrice"/></div>
         <div><label class="field-label">Тейк-профит, PL (опц.)</label><input type="number" step="any" name="takeProfitPrice"/></div>
@@ -853,6 +891,7 @@ function renderJournalScreen() {
         <div class="stat-tile"><div class="num">${stats.avgWinR.toFixed(2)}R</div><div class="lbl">Средний R (win)</div></div>
         <div class="stat-tile"><div class="num">-${stats.avgLossR.toFixed(2)}R</div><div class="lbl">Средний R (loss)</div></div>
         <div class="stat-tile"><div class="num">${stats.expectancy.toFixed(2)}R</div><div class="lbl">Expectancy</div></div>
+        <div class="stat-tile"><div class="num ${totalPnl >= 0 ? "r-pos" : "r-neg"}">${totalPnl >= 0 ? "+" : ""}${totalPnl.toFixed(2)} $</div><div class="lbl">Итого, $</div></div>
       </div>
       <p class="faint">Expectancy = (% выигрышных × средний R выигрыша) − (% убыточных × средний R убытка) — формула Van Tharp из Блока 3.</p>
       ${renderEquityCurve(stats.withR)}
@@ -863,10 +902,11 @@ function renderJournalScreen() {
     <div class="card">
       <span class="eyebrow">Журнал</span>
       <h3>Записи</h3>
+      ${renderTradePnlChart(entries)}
       <div class="table-wrap">
         <table class="journal-table">
-          <thead><tr><th>Дата</th><th>Актив</th><th>Тезис</th><th>Размер</th><th>R</th><th>Что не по плану</th><th></th></tr></thead>
-          <tbody>${rows || `<tr><td colspan="7" class="faint">Пока пусто</td></tr>`}</tbody>
+          <thead><tr><th>Дата</th><th>Актив</th><th>Тезис</th><th>Размер</th><th>Результат, $</th><th>R</th><th>Что не по плану</th><th></th></tr></thead>
+          <tbody>${rows || `<tr><td colspan="8" class="faint">Пока пусто</td></tr>`}</tbody>
         </table>
       </div>
     </div>
@@ -884,7 +924,7 @@ function bindJournalEvents() {
       date: fd.get("date"),
       asset: fd.get("asset").trim(),
       direction: fd.get("direction"),
-      positionSizePct: parseFloat(fd.get("positionSizePct")) || 0,
+      positionSizeUsd: parseFloat(fd.get("positionSizeUsd")) || 0,
       entryPrice: fd.get("entryPrice") || "",
       stopPrice: fd.get("stopPrice") || "",
       takeProfitPrice: fd.get("takeProfitPrice") || "",
