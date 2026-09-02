@@ -865,7 +865,6 @@ function renderJournalScreen() {
       <td>${e.positionSizeUsd} $</td>
       <td>${pnlCell}</td>
       <td>${rCell}</td>
-      <td class="wrap">${esc(e.deviationNote || "")}</td>
       <td><button class="btn ghost" data-del="${e.id}">Удалить</button></td>
     </tr>`;
   }).join("");
@@ -888,7 +887,6 @@ function renderJournalScreen() {
         <div><label class="field-label">Факт. цена выхода (опц.)</label><input type="number" step="any" name="exitPrice"/></div>
         <div class="full"><label class="field-label">Тезис входа (1 предложение)</label><input type="text" name="thesis" required/></div>
         <div class="full"><label class="field-label">План выхода</label><input type="text" name="exitPlan"/></div>
-        <div class="full"><label class="field-label">Что пошло не по плану</label><textarea name="deviationNote"></textarea></div>
         <div class="full btn-row"><button type="submit" class="btn primary">Записать сделку</button></div>
       </form>
     </div>
@@ -916,8 +914,8 @@ function renderJournalScreen() {
       ${renderTradePnlChart(entries)}
       <div class="table-wrap">
         <table class="journal-table">
-          <thead><tr><th>Дата</th><th>Актив</th><th>Тезис</th><th>Размер</th><th>Результат, $</th><th>R</th><th>Что не по плану</th><th></th></tr></thead>
-          <tbody>${rows || `<tr><td colspan="8" class="faint">Пока пусто</td></tr>`}</tbody>
+          <thead><tr><th>Дата</th><th>Актив</th><th>Тезис</th><th>Размер</th><th>Результат, $</th><th>R</th><th></th></tr></thead>
+          <tbody>${rows || `<tr><td colspan="7" class="faint">Пока пусто</td></tr>`}</tbody>
         </table>
       </div>
     </div>
@@ -941,8 +939,7 @@ function bindJournalEvents() {
       takeProfitPrice: fd.get("takeProfitPrice") || "",
       exitPrice: fd.get("exitPrice") || "",
       thesis: fd.get("thesis").trim(),
-      exitPlan: fd.get("exitPlan").trim(),
-      deviationNote: fd.get("deviationNote").trim()
+      exitPlan: fd.get("exitPlan").trim()
     };
     Store.addJournalEntry(entry);
     checkJournalAchievements();
