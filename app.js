@@ -118,6 +118,13 @@ const Store = (() => {
     state.journal.entries = state.journal.entries.filter(e => e.id !== id);
     persist();
   }
+  function updateJournalEntry(id, patch) {
+    load();
+    const e = state.journal.entries.find(x => x.id === id);
+    if (!e) return;
+    Object.assign(e, patch);
+    persist();
+  }
   function setPropFirm(cfg) {
     load();
     state.journal.propFirm = cfg;
@@ -137,7 +144,7 @@ const Store = (() => {
     getBlock, setChecklistItem, recordQuizResult,
     blockChecklistFraction, blockProgressPct, isBlockComplete, isBlockUnlocked,
     toggleStanding,
-    addJournalEntry, deleteJournalEntry, setPropFirm,
+    addJournalEntry, deleteJournalEntry, updateJournalEntry, setPropFirm,
     unlockAchievement,
     get raw() { return load(); }
   };
@@ -849,15 +856,20 @@ function renderPropFirmPanel(entries, stats) {
   </div>`;
 }
 
+let journalEditingId = null;
+
 function renderJournalScreen() {
   const entries = Store.raw.journal.entries.slice().sort((a, b) => b.date.localeCompare(a.date));
   const stats = journalStats(entries);
+  const editing = journalEditingId ? entries.find(e => e.id === journalEditingId) : null;
+  const f = (name, fallback) => esc(editing ? (editing[name] ?? "") : (fallback ?? ""));
 
   const rows = entries.map(e => {
+    const isOpen = e.exitPrice === "" || e.exitPrice === null || e.exitPrice === undefined;
     const r = computeR(e);
-    const rCell = r === null ? '<span class="faint">—</span>' : `<span class="${r >= 0 ? "r-pos" : "r-neg"}">${r.toFixed(2)}R</span>`;
+    const rCell = isOpen ? "" : (r === null ? '<span class="faint">—</span>' : `<span class="${r >= 0 ? "r-pos" : "r-neg"}">${r.toFixed(2)}R</span>`);
     const pnl = computePnlUsd(e);
-    const pnlCell = pnl === null ? '<span class="faint">—</span>' : `<span class="${pnl >= 0 ? "r-pos" : "r-neg"}">${pnl >= 0 ? "+" : ""}${pnl.toFixed(2)} $</span>`;
+    const pnlCell = isOpen ? '<span class="pill" style="border-color:var(--color-ember-border);color:var(--color-ember-glow)">открыта</span>' : (pnl === null ? '<span class="faint">—</span>' : `<span class="${pnl >= 0 ? "r-pos" : "r-neg"}">${pnl >= 0 ? "+" : ""}${pnl.toFixed(2)} $</span>`);
     return `<tr>
       <td>${esc(e.date)}</td>
       <td>${esc(e.asset)}</td>
@@ -865,30 +877,39 @@ function renderJournalScreen() {
       <td>${e.positionSizeUsd} $</td>
       <td>${pnlCell}</td>
       <td>${rCell}</td>
-      <td><button class="btn ghost" data-del="${e.id}">Удалить</button></td>
+      <td class="btn-row" style="margin:0">
+        ${isOpen ? `<button class="btn" data-close="${e.id}">Закрыть</button>` : ""}
+        <button class="btn ghost" data-del="${e.id}">Удалить</button>
+      </td>
     </tr>`;
   }).join("");
   const totalPnl = entries.reduce((s, e) => { const p = computePnlUsd(e); return p !== null ? s + p : s; }, 0);
+  const openCount = entries.filter(e => e.exitPrice === "" || e.exitPrice === null || e.exitPrice === undefined).length;
 
   return `
     <div class="card">
       <span class="eyebrow">Дисциплина</span>
       <h2>Торговый дневник</h2>
+      ${editing ? `<div class="scenario-prompt">Закрываешь позицию по ${esc(editing.asset)} от ${esc(editing.date)} — впиши факт. цену выхода (и при желании измени дату на дату закрытия) и сохрани. <button class="btn ghost" id="journal-cancel-edit" type="button" style="margin-left:8px">Отменить</button></div>` : ""}
       <form id="journal-form" class="form-grid">
-        <div><label class="field-label">Дата</label><input type="date" name="date" value="${todayISO()}" required/></div>
-        <div><label class="field-label">Актив</label><input type="text" name="asset" placeholder="BTC" required/></div>
+        <div><label class="field-label">Дата</label><input type="date" name="date" value="${editing ? f("date") : todayISO()}" required/></div>
+        <div><label class="field-label">Актив</label><input type="text" name="asset" placeholder="BTC" value="${f("asset")}" required/></div>
         <div><label class="field-label">Направление</label>
-          <select name="direction"><option value="long">Long</option><option value="short">Short</option></select>
+          <select name="direction">
+            <option value="long" ${editing && editing.direction === "long" ? "selected" : ""}>Long</option>
+            <option value="short" ${editing && editing.direction === "short" ? "selected" : ""}>Short</option>
+          </select>
         </div>
-        <div><label class="field-label">Размер позиции, $</label><input type="number" step="0.01" name="positionSizeUsd" required/></div>
-        <div><label class="field-label">Цена входа (опц.)</label><input type="number" step="any" name="entryPrice"/></div>
-        <div><label class="field-label">Цена стопа, SL (опц.)</label><input type="number" step="any" name="stopPrice"/></div>
-        <div><label class="field-label">Тейк-профит, PL (опц.)</label><input type="number" step="any" name="takeProfitPrice"/></div>
-        <div><label class="field-label">Факт. цена выхода (опц.)</label><input type="number" step="any" name="exitPrice"/></div>
-        <div class="full"><label class="field-label">Тезис входа (1 предложение)</label><input type="text" name="thesis" required/></div>
-        <div class="full"><label class="field-label">План выхода</label><input type="text" name="exitPlan"/></div>
-        <div class="full btn-row"><button type="submit" class="btn primary">Записать сделку</button></div>
+        <div><label class="field-label">Размер позиции, $</label><input type="number" step="0.01" name="positionSizeUsd" value="${f("positionSizeUsd")}" required/></div>
+        <div><label class="field-label">Цена входа (опц.)</label><input type="number" step="any" name="entryPrice" value="${f("entryPrice")}"/></div>
+        <div><label class="field-label">Цена стопа, SL (опц.)</label><input type="number" step="any" name="stopPrice" value="${f("stopPrice")}"/></div>
+        <div><label class="field-label">Тейк-профит, PL (опц.)</label><input type="number" step="any" name="takeProfitPrice" value="${f("takeProfitPrice")}"/></div>
+        <div><label class="field-label">Факт. цена выхода (опц.)</label><input type="number" step="any" name="exitPrice" value="${f("exitPrice")}"/></div>
+        <div class="full"><label class="field-label">Тезис входа (1 предложение)</label><input type="text" name="thesis" value="${f("thesis")}" required/></div>
+        <div class="full"><label class="field-label">План выхода</label><input type="text" name="exitPlan" value="${f("exitPlan")}"/></div>
+        <div class="full btn-row"><button type="submit" class="btn primary">${editing ? "Сохранить закрытие" : "Открыть / записать сделку"}</button></div>
       </form>
+      ${!editing ? `<p class="faint" style="margin-top:10px">Цену выхода можно оставить пустой — позиция запишется как открытая${openCount ? `, сейчас открыто: ${openCount}` : ""}, и её можно будет закрыть позже прямо из таблицы записей.</p>` : ""}
     </div>
 
     <div class="card">
@@ -928,8 +949,7 @@ function bindJournalEvents() {
   form.addEventListener("submit", (e) => {
     e.preventDefault();
     const fd = new FormData(form);
-    const entry = {
-      id: uid(),
+    const fields = {
       date: fd.get("date"),
       asset: fd.get("asset").trim(),
       direction: fd.get("direction"),
@@ -941,16 +961,31 @@ function bindJournalEvents() {
       thesis: fd.get("thesis").trim(),
       exitPlan: fd.get("exitPlan").trim()
     };
-    Store.addJournalEntry(entry);
+    if (journalEditingId) {
+      Store.updateJournalEntry(journalEditingId, fields);
+      journalEditingId = null;
+    } else {
+      Store.addJournalEntry({ id: uid(), ...fields });
+    }
     checkJournalAchievements();
     checkPropFirmAchievements();
     render();
   });
 
   on(view, "[data-del]", "click", (e) => {
+    if (journalEditingId === e.currentTarget.dataset.del) journalEditingId = null;
     Store.deleteJournalEntry(e.currentTarget.dataset.del);
     render();
   });
+
+  on(view, "[data-close]", "click", (e) => {
+    journalEditingId = e.currentTarget.dataset.close;
+    render();
+    document.querySelector("#journal-form").scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+
+  const cancelEdit = view.querySelector("#journal-cancel-edit");
+  if (cancelEdit) cancelEdit.addEventListener("click", () => { journalEditingId = null; render(); });
 
   const pfSave = view.querySelector("#pf-save");
   if (pfSave) pfSave.addEventListener("click", () => {
